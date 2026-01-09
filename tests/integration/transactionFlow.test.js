@@ -49,7 +49,7 @@ describe('Transaction Flow Integration Tests', () => {
       );
 
       expect(transaction).toBeDefined();
-      expect(transaction.transaction_id).toMatch(/^TRX-\d{8}-\d{3}$/);
+      expect(transaction.transaction_id).toMatch(/^TRX-\d{8}-[A-F0-9]{8}$/);
       expect(transaction.status).toBe('approved'); // Auto-approved
       expect(transaction.approved_by).toBe(karyawanId);
       expect(transaction.approved_at).toBeDefined();
@@ -75,7 +75,7 @@ describe('Transaction Flow Integration Tests', () => {
       expect(transaction.approved_at).toBeNull();
     });
 
-    test('generates sequential transaction IDs', async () => {
+    test('generates unique transaction IDs with hex suffix', async () => {
       const trx1 = await transactionService.createTransaction(
         karyawanId,
         'paket',
@@ -92,11 +92,13 @@ describe('Transaction Flow Integration Tests', () => {
         {}
       );
 
-      // Extract sequence numbers
-      const seq1 = parseInt(trx1.transaction_id.split('-')[2]);
-      const seq2 = parseInt(trx2.transaction_id.split('-')[2]);
+      // IDs should have different hex suffixes (since they're random)
+      const hex1 = trx1.transaction_id.split('-')[2];
+      const hex2 = trx2.transaction_id.split('-')[2];
 
-      expect(seq2).toBe(seq1 + 1);
+      expect(hex1).not.toBe(hex2);
+      expect(hex1).toMatch(/^[A-F0-9]{8}$/);
+      expect(hex2).toMatch(/^[A-F0-9]{8}$/);
     });
 
     test('creates utang transaction with customer name', async () => {
@@ -327,7 +329,7 @@ describe('Transaction Flow Integration Tests', () => {
         {}
       );
 
-      const idPattern = /^TRX-\d{8}-\d{3}$/;
+      const idPattern = /^TRX-\d{8}-[A-F0-9]{8}$/;
       expect(transaction.transaction_id).toMatch(idPattern);
 
       // Verify date in ID matches today
