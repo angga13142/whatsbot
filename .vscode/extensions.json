@@ -1,0 +1,15 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "editorconfig.editorconfig",
+    "eamodio.gitlens",
+    "orta.vscode-jest",
+    "firsttris.vscode-jest-runner",
+    "usernamehw.errorlens",
+    "christian-kohler.path-intellisense",
+    "aaron-bond.better-comments",
+    "rangav.vscode-thunder-client",
+    "cweijan.vscode-database-client2"
+  ]
+}

@@ -1,0 +1,33 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # best practice: rely on branch protection rules ensuring CI passed before merge
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SSH Key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+
+      - name: Deploy to VPS
+        env:
+          HOST: ${{ secrets.Deploy_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          DIR: ${{ secrets.DEPLOY_DIR }} # e.g. /var/www/whatsbot
+        run: |
+          ssh $USER@$HOST << EOF
+            cd $DIR
+            git pull origin main
+            npm ci --production
+            # Run migrations if you have a script for it
+            # npm run migrate
+            pm2 restart whatsbot || pm2 start index.js --name whatsbot
+          EOF
