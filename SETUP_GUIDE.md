@@ -1,90 +1,169 @@
-# ✅ **NEXT STEPS SETELAH COPILOT GENERATE**
+# 🚀 WhatsApp Bot - Complete Setup Guide
 
-## 🔍 **1. VERIFY & INSTALL**
+Panduan lengkap untuk setup dan development WhatsApp Bot dengan code quality tools dan CI/CD.
+
+## 📋 Prerequisites
+
+- **Node.js** >= 18.x
+- **npm** >= 9.x
+- **Git** >= 2.x
+- **VS Code** (recommended)
+
+## 🔧 Installation
+
+### 1. Clone Repository
 
 ```bash
-# Install semua dependencies yang Copilot suggest
+git clone https://github.com/angga13142/whatsbot.git
+cd whatsbot
+```
+
+### 2. Install Dependencies
+
+```bash
 npm install
-
-# Install dev dependencies (biasanya Copilot kasih command)
-npm install --save-dev eslint prettier husky lint-staged @commitlint/cli @commitlint/config-conventional
-
-# Setup Husky
-npx husky install
 ```
 
----
-
-## 🧪 **2. TEST SETUP (Quick Check)**
+### 3. Setup Environment
 
 ```bash
-# Test ESLint
+cp .env.example .env
+```
+
+### 4. Verify Installation
+
+```bash
+npm test
 npm run lint
-
-# Test Prettier
-npm run format:check
-
-# Test Commit (will trigger hooks)
-git add .
-git commit -m "test: setup code quality tools"
-# ↑ Seharusnya auto-format & lint
-
-# Test all scripts
-npm run test
 ```
 
----
-
-## ✅ **3. VERIFICATION CHECKLIST**
-
-```
-☐ ESLint berjalan tanpa error
-☐ Prettier auto-format saat save file di VS Code
-☐ Git commit trigger pre-commit hook
-☐ Commit message harus pakai format (feat: , fix:, etc)
-☐ VS Code show recommended extensions popup
-☐ npm test berjalan (meskipun belum ada test)
-```
-
----
-
-## 🚨 **4. COMMON ISSUES & FIXES**
-
-**Issue: Husky hooks tidak jalan**
+## 🎯 Development Commands
 
 ```bash
-# Fix:
-chmod +x .husky/*
-npx husky install
-```
+# Start bot
+npm start
 
-**Issue: ESLint error di semua file**
+# Development mode
+npm run dev
 
-```bash
-# Fix:
+# Run tests
+npm test
+npm run test:watch
+npm run test:coverage
+
+# Linting
+npm run lint
 npm run lint:fix
+
+# Formatting
+npm run format
+npm run format:check
 ```
 
-**Issue: Prettier conflict dengan ESLint**
+## ✅ Code Quality Tools
+
+### ESLint
+
+- Checks code for issues
+- Auto-fix with `npm run lint:fix`
+
+### Prettier
+
+- Formats code consistently
+- Runs on save in VS Code
+
+### Commitlint
+
+- Validates commit messages
+- Format: `type(scope?): subject`
+- Types: feat, fix, docs, style, refactor, test, etc.
+
+### Husky + Lint-staged
+
+- Pre-commit: Runs linting & formatting
+- Commit-msg: Validates commit message
+
+## 🔄 Git Workflow
 
 ```bash
-# Fix:  Install config
-npm install --save-dev eslint-config-prettier
+# Create feature branch
+git checkout -b feat/your-feature
+
+# Make changes and commit
+git add .
+git commit -m "feat: add new feature"
+
+# Push to GitHub
+git push origin feat/your-feature
 ```
 
----
+## 🧪 Testing
 
-## 🎯 **5. FINAL TEST**
-
-Coba bikin file test:
+Write tests in `test/unit/`:
 
 ```javascript
-// test.js
-const x = 'hello'; // intentional error (no semicolon)
-console.log(x);
-
-// Save file → Should auto-format
-// Git add → Should auto-fix
-// Git commit "wrong format" → Should be REJECTED
-// Git commit "test:  sample" → Should be ACCEPTED
+describe('YourFeature', () => {
+  test('should work', () => {
+    expect(true).toBe(true);
+  });
+});
 ```
+
+## 🚀 CI/CD
+
+GitHub Actions runs on:
+
+- Push to master
+- Pull requests
+
+Checks:
+
+- ✅ Linting
+- ✅ Tests
+- ✅ Coverage
+
+## 📝 Commit Message Format
+
+```
+type(scope?): subject
+
+Examples:
+feat: add message handler
+fix: resolve connection issue
+docs: update README
+test: add unit tests
+```
+
+## 🆘 Troubleshooting
+
+### Reinstall Husky
+
+```bash
+rm -rf .husky
+npx husky init
+echo "npx lint-staged" > .husky/pre-commit
+echo "npx --no-install commitlint --edit \$1" > .husky/commit-msg
+```
+
+### Clear Jest Cache
+
+```bash
+npx jest --clearCache
+```
+
+### Reinstall Dependencies
+
+```bash
+rm -rf node_modules package-lock.json
+npm install
+```
+
+## 🔗 Resources
+
+- [Conventional Commits](https://www.conventionalcommits.org/)
+- [Jest Documentation](https://jestjs.io/)
+- [ESLint Rules](https://eslint.org/docs/rules/)
+
+---
+
+**Happy Coding! 🚀**
