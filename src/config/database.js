@@ -1,84 +1,63 @@
-// File: src/config/database.js
-
 /**
  * Database Configuration
  *
- * Purpose: Knex.js configuration for SQLite and PostgreSQL.
- * defines connection settings, migrations, and seeds locations.
- *
- * @module config/database
+ * Provides knex configuration based on environment
  */
 
-require('dotenv').config();
 const path = require('path');
 
-const DB_TYPE = process.env.DB_TYPE || 'sqlite';
-const MIGRATION_PATH = path.join(__dirname, '../database/migrations');
-const SEED_PATH = path.join(__dirname, '../database/seeds');
-
-// Common configuration
-const commonConfig = {
-  migrations: {
-    directory: MIGRATION_PATH,
-  },
-  seeds: {
-    directory: SEED_PATH,
-  },
-  useNullAsDefault: true,
-  pool: {
-    min: 2,
-    max: 10,
-    afterCreate: (conn, cb) => {
-      if (DB_TYPE === 'sqlite') {
-        conn.run('PRAGMA foreign_keys = ON', cb);
-      } else {
-        cb(null, conn);
-      }
-    },
-  },
-};
-
-// Configuration by environment/type
-const config = {
-  // Development (SQLite)
-  development: {
-    client: 'sqlite3',
-    connection: {
-      filename: process.env.DB_PATH || './storage/database.sqlite',
-    },
-    ...commonConfig,
-  },
-
-  // Production (PostgreSQL)
-  production: {
-    client: 'postgresql',
-    connection: {
-      host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT, 10) || 5432,
-      database: process.env.DB_NAME || 'cashflow_db',
-      user: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD,
-      ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
-    },
-    ...commonConfig,
-  },
-
-  // Test (In-Memory SQLite)
-  test: {
-    client: 'sqlite3',
-    connection: {
-      filename: ':memory:',
-    },
-    ...commonConfig,
-    pool: { min: 1, max: 1 },
-  },
-};
-
-// Export based on active type or specific env request
-// In runtime, we usually select based on DB_TYPE
-const activeConfig = DB_TYPE === 'postgresql' ? config.production : config.development;
-
 module.exports = {
-  ...config, // Export full config object for knex cli
-  active: activeConfig, // Export active config for app usage
+  /**
+   * Get database configuration
+   * @returns {Object} Knex configuration
+   */
+  getDatabaseConfig() {
+    const dbType = process.env.DB_TYPE || 'sqlite';
+
+    // Development / SQLite (Using 'sqlite3' as tested working driver)
+    if (dbType === 'sqlite') {
+      return {
+        client: 'sqlite3',
+        connection: {
+          filename: process.env.DB_PATH || './storage/database.sqlite',
+        },
+        useNullAsDefault: true,
+        migrations: {
+          directory: path.join(__dirname, '../database/migrations'),
+          tableName: 'knex_migrations',
+        },
+        seeds: {
+          directory: path.join(__dirname, '../database/seeds'),
+        },
+      };
+    }
+
+    // Production / PostgreSQL
+    if (dbType === 'postgresql') {
+      return {
+        client: 'pg',
+        connection: {
+          host: process.env.DB_HOST || 'localhost',
+          port: parseInt(process.env.DB_PORT) || 5432,
+          database: process.env.DB_NAME || 'cashflow_db',
+          user: process.env.DB_USER || 'postgres',
+          password: process.env.DB_PASSWORD,
+          ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+        },
+        pool: {
+          min: parseInt(process.env.DB_POOL_MIN) || 2,
+          max: parseInt(process.env.DB_POOL_MAX) || 10,
+        },
+        migrations: {
+          directory: path.join(__dirname, '../database/migrations'),
+          tableName: 'knex_migrations',
+        },
+        seeds: {
+          directory: path.join(__dirname, '../database/seeds'),
+        },
+      };
+    }
+
+    throw new Error(`Unsupported database type: ${dbType}`);
+  },
 };

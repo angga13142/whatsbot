@@ -1,73 +1,84 @@
-// File: src/utils/logger.js
-
 /**
- * Logger Utility
+ * Winston Logger Configuration
  *
- * Purpose: Centralized logging configuration using Winston.
- * Supports console (development) and daily rotate files (production).
+ * Features:
+ * - Console logging (colorized in development)
+ * - File logging (daily rotation)
+ * - Different log levels (error, warn, info, debug)
+ * - Structured logging (JSON format in files)
+ * - Timestamps in Asia/Jakarta timezone
+ * - Separate error log file
  *
- * @module utils/logger
+ * Usage:
+ *   const logger = require('./utils/logger');
+ *   logger.info('User logged in', { userId: 123 });
+ *   logger.error('Database error', { error: err.message });
  */
 
 const winston = require('winston');
-require('winston-daily-rotate-file');
+const DailyRotateFile = require('winston-daily-rotate-file');
 const path = require('path');
 
-// Log directory
-const LOG_DIR = process.env.LOG_PATH || './storage/logs';
+// Configure timezone
+const timezoned = () => {
+  return new Date().toLocaleString('en-US', {
+    timeZone: 'Asia/Jakarta',
+  });
+};
 
-// Define log format
-const logFormat = winston.format.printf(({ timestamp, level, message, ...meta }) => {
-  const metaString = Object.keys(meta).length ? JSON.stringify(meta) : '';
-  return `${timestamp} [${level.toUpperCase()}]: ${message} ${metaString}`;
+// Define log format for console
+const consoleFormat = winston.format.printf(({ level, message, timestamp, ...meta }) => {
+  const metaStr = Object.keys(meta).length ? JSON.stringify(meta) : '';
+  return `[${timestamp}] ${level.toUpperCase()}: ${message} ${metaStr}`;
 });
-
-// Configure transports
-const transports = [
-  // Console Transport
-  new winston.transports.Console({
-    level: process.env.LOG_LEVEL || 'info',
-    format: winston.format.combine(
-      winston.format.colorize(),
-      winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-      logFormat
-    ),
-  }),
-
-  // Daily Rotate File Transport (Error)
-  new winston.transports.DailyRotateFile({
-    filename: path.join(LOG_DIR, 'error-%DATE%.log'),
-    datePattern: 'YYYY-MM-DD',
-    zippedArchive: true,
-    maxSize: process.env.LOG_MAX_SIZE || '20m',
-    maxFiles: process.env.LOG_MAX_FILES || '14d',
-    level: 'error',
-    format: winston.format.combine(
-      winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-      winston.format.json()
-    ),
-  }),
-
-  // Daily Rotate File Transport (Combined)
-  new winston.transports.DailyRotateFile({
-    filename: path.join(LOG_DIR, 'combined-%DATE%.log'),
-    datePattern: 'YYYY-MM-DD',
-    zippedArchive: true,
-    maxSize: process.env.LOG_MAX_SIZE || '20m',
-    maxFiles: process.env.LOG_MAX_FILES || '14d',
-    level: process.env.LOG_LEVEL || 'info',
-    format: winston.format.combine(
-      winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-      winston.format.json()
-    ),
-  }),
-];
 
 // Create logger instance
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
-  transports,
+  format: winston.format.combine(
+    winston.format.timestamp({ format: timezoned }),
+    winston.format.json()
+  ),
+  transports: [
+    // Console transport (for development)
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.timestamp({ format: timezoned }),
+        consoleFormat
+      ),
+      handleExceptions: true,
+    }),
+
+    // Daily Rotate File (Combined)
+    new DailyRotateFile({
+      filename: path.join(process.env.LOG_PATH || './storage/logs', 'combined-%DATE%.log'),
+      datePattern: 'YYYY-MM-DD',
+      zippedArchive: true,
+      maxSize: process.env.LOG_MAX_SIZE || '10m',
+      maxFiles: process.env.LOG_MAX_FILES || '14d',
+      format: winston.format.combine(
+        winston.format.timestamp({ format: timezoned }),
+        winston.format.json()
+      ),
+    }),
+
+    // Daily Rotate File (Error only)
+    new DailyRotateFile({
+      filename: path.join(process.env.LOG_PATH || './storage/logs', 'error-%DATE%.log'),
+      datePattern: 'YYYY-MM-DD',
+      zippedArchive: true,
+      maxSize: process.env.LOG_MAX_SIZE || '10m',
+      maxFiles: process.env.LOG_MAX_FILES || '14d',
+      level: 'error',
+      format: winston.format.combine(
+        winston.format.timestamp({ format: timezoned }),
+        winston.format.json()
+      ),
+    }),
+  ],
+  exitOnError: false,
 });
 
-// Export logger
+// Export logger instance
 module.exports = logger;

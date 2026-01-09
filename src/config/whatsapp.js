@@ -1,42 +1,52 @@
-// File: src/config/whatsapp.js
-
 /**
- * WhatsApp Client Configuration
+ * WhatsApp Configuration
  *
- * Purpose: specific configuration for the whatsapp-web.js client.
- *
- * @module config/whatsapp
+ * Provides WhatsApp client configuration
  */
 
 const { LocalAuth } = require('whatsapp-web.js');
 
-const appConfig = require('./app');
-
-const AUTH_PATH = process.env.WWEBJS_AUTH_PATH || './storage/auth';
-
 module.exports = {
-  authStrategy: new LocalAuth({
-    clientId: process.env.WWEBJS_CLIENT_ID || 'cashflow-bot',
-    dataPath: AUTH_PATH,
-  }),
-
-  puppeteer: {
-    headless: appConfig.bot.puppeteer.headless,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
-      '--single-process',
-      '--disable-gpu',
-    ],
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+  /**
+   * Get WhatsApp client configuration
+   * @returns {Object} Client options
+   */
+  getWhatsAppConfig() {
+    return {
+      authStrategy: new LocalAuth({
+        clientId: process.env.WWEBJS_CLIENT_ID || 'cashflow-bot',
+        dataPath: process.env.WWEBJS_AUTH_PATH || './storage/auth',
+      }),
+      puppeteer: {
+        headless: process.env.PUPPETEER_HEADLESS !== 'false',
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--disable-gpu',
+        ],
+      },
+      // Optional: Web version cache
+      webVersionCache: {
+        type: 'remote',
+        remotePath:
+          'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+      },
+    };
   },
 
-  userAgent:
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36',
-
-  qrMaxRetries: 5,
+  /**
+   * Get bot configuration
+   * @returns {Object} Bot config
+   */
+  getBotConfig() {
+    return {
+      phoneNumber: process.env.BOT_PHONE_NUMBER,
+      authMethod: process.env.AUTH_METHOD || 'pairing', // 'qr' or 'pairing'
+      name: process.env.BOT_NAME || 'Cashflow Bot',
+    };
+  },
 };
