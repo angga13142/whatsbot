@@ -1,98 +1,277 @@
-// File: src/commands/index.js
-
 /**
  * Command Registry
  *
- * Purpose: Centralized command routing and registration.
- * Allows routing by role and aliases.
- *
- * @module commands/index
+ * Central registry for all bot commands
+ * Provides command lookup, routing, and metadata
  */
 
-const logger = require('../utils/logger');
 const { ROLES } = require('../utils/constants');
 
-// Generic command loader
-// In a real dynamic app, we might walk directories.
-// For this Phase 1 MVP, we require manually to ensure order and visibility.
+// Import all command handlers
+const startCommand = require('./common/startCommand');
+const helpCommand = require('./common/helpCommand');
+const statusCommand = require('./common/statusCommand');
 
-const registry = {
-  common: {
-    start: require('./common/startCommand'),
-    help: require('./common/helpCommand'),
-    status: require('./common/statusCommand'),
-  },
-  karyawan: {
-    catat: require('./karyawan/catatCommand'),
-    laporan: require('./karyawan/laporanCommand'),
-  },
-  admin: {
-    // Combined BOS and ADMIN
-    approve: require('./bos/approveCommand'),
-    reject: require('./bos/rejectCommand'),
-    addkaryawan: require('./bos/addUserCommand'),
-    laporan_bos: require('./bos/laporanBosCommand'),
-    pending: require('./bos/pendingCommand'), // Ensure this exists or is part of laporan
-  },
-  superadmin: {
-    sql: require('./superadmin/sqlCommand'),
-    // inherits admin commands logic usually, but here we separate namespace
-  },
-  investor: {
-    // Read only commands
-  },
+const catatCommand = require('./karyawan/catatCommand');
+const laporanCommand = require('./karyawan/laporanCommand');
+const historyCommand = require('./karyawan/historyCommand');
+
+const addKaryawanCommand = require('./bos/addKaryawanCommand');
+const addInvestorCommand = require('./bos/addInvestorCommand');
+const suspendCommand = require('./bos/suspendCommand');
+const approveCommand = require('./bos/approveCommand');
+const rejectCommand = require('./bos/rejectCommand');
+const pendingCommand = require('./bos/pendingCommand');
+const laporanBosCommand = require('./bos/laporanBosCommand');
+
+const sqlCommand = require('./superadmin/sqlCommand');
+const createAdminCommand = require('./superadmin/createAdminCommand');
+const usersCommand = require('./superadmin/usersCommand');
+const logsCommand = require('./superadmin/logsCommand');
+
+/**
+ * Command definitions by role
+ * Each command has:  name, description, usage, handler, permission
+ */
+const commands = {
+  // Common commands (available to all roles)
+  common: [
+    {
+      name: 'start',
+      aliases: ['mulai'],
+      description: 'Memulai bot dan menampilkan pesan selamat datang',
+      usage: '/start',
+      handler: startCommand.handler,
+      permission: null, // No specific permission needed
+    },
+    {
+      name: 'help',
+      aliases: ['bantuan'],
+      description: 'Menampilkan daftar perintah yang tersedia',
+      usage: '/help',
+      handler: helpCommand.handler,
+      permission: null,
+    },
+    {
+      name: 'status',
+      aliases: ['info'],
+      description: 'Menampilkan status akun Anda',
+      usage: '/status',
+      handler: statusCommand.handler,
+      permission: null,
+    },
+  ],
+
+  // Karyawan commands
+  karyawan: [
+    {
+      name: 'catat',
+      aliases: ['transaksi', 'input'],
+      description: 'Mencatat transaksi baru (penjualan/utang/pengeluaran)',
+      usage: '/catat',
+      handler: catatCommand.handler,
+      permission: 'create_transaction',
+    },
+    {
+      name: 'laporan',
+      aliases: ['report'],
+      description: 'Melihat laporan transaksi hari ini',
+      usage: '/laporan',
+      handler: laporanCommand.handler,
+      permission: null,
+    },
+    {
+      name: 'history',
+      aliases: ['riwayat'],
+      description: 'Melihat riwayat transaksi',
+      usage: '/history [jumlah hari]',
+      handler: historyCommand.handler,
+      permission: null,
+    },
+  ],
+
+  // Admin (Bos) commands
+  admin: [
+    {
+      name: 'addkaryawan',
+      aliases: ['tambahkaryawan'],
+      description: 'Menambahkan karyawan baru',
+      usage: '/addkaryawan [nomor HP] [nama lengkap]',
+      handler: addKaryawanCommand.handler,
+      permission: 'manage_users',
+    },
+    {
+      name: 'addinvestor',
+      aliases: ['tambahinvestor'],
+      description: 'Menambahkan investor baru',
+      usage: '/addinvestor [nomor HP] [nama lengkap]',
+      handler: addInvestorCommand.handler,
+      permission: 'manage_users',
+    },
+    {
+      name: 'suspend',
+      aliases: ['tangguhkan'],
+      description: 'Menangguhkan akun user',
+      usage: '/suspend [nomor HP]',
+      handler: suspendCommand.handler,
+      permission: 'manage_users',
+    },
+    {
+      name: 'approve',
+      aliases: ['setuju'],
+      description: 'Menyetujui transaksi pending',
+      usage: '/approve [TRX-ID]',
+      handler: approveCommand.handler,
+      permission: 'approve_transaction',
+    },
+    {
+      name: 'reject',
+      aliases: ['tolak'],
+      description: 'Menolak transaksi pending',
+      usage: '/reject [TRX-ID] [alasan]',
+      handler: rejectCommand.handler,
+      permission: 'approve_transaction',
+    },
+    {
+      name: 'pending',
+      aliases: ['menunggu'],
+      description: 'Melihat daftar transaksi yang menunggu approval',
+      usage: '/pending',
+      handler: pendingCommand.handler,
+      permission: 'approve_transaction',
+    },
+    {
+      name: 'laporan',
+      aliases: ['report'],
+      description: 'Melihat laporan lengkap (harian/bulanan)',
+      usage: '/laporan [harian|bulanan]',
+      handler: laporanBosCommand.handler,
+      permission: 'view_all_reports',
+    },
+  ],
+
+  // Superadmin commands
+  superadmin: [
+    {
+      name: 'sql',
+      aliases: [],
+      description: 'Menjalankan query SQL (read-only)',
+      usage: '/sql [query]',
+      handler: sqlCommand.handler,
+      permission: 'execute_sql',
+    },
+    {
+      name: 'createadmin',
+      aliases: ['buatadmin'],
+      description: 'Membuat admin baru',
+      usage: '/createadmin [nomor HP] [nama lengkap]',
+      handler: createAdminCommand.handler,
+      permission: 'manage_admins',
+    },
+    {
+      name: 'users',
+      aliases: ['listuser'],
+      description: 'Melihat daftar semua user',
+      usage: '/users [role]',
+      handler: usersCommand.handler,
+      permission: 'manage_users',
+    },
+    {
+      name: 'logs',
+      aliases: ['audit'],
+      description: 'Melihat audit logs',
+      usage: '/logs [action] [limit]',
+      handler: logsCommand.handler,
+      permission: 'view_audit_logs',
+    },
+  ],
 };
 
 module.exports = {
-  async execute(message) {
-    const body = message.body.trim();
+  /**
+   * Get command by name for specific role
+   * @param {string} commandName - Command name or alias
+   * @param {string} userRole - User role
+   * @returns {Object|null} Command object or null
+   */
+  getCommand(commandName, userRole) {
+    const lowerName = commandName.toLowerCase();
 
-    // 1. Check if it's a command
-    if (!body.startsWith('/') && !body.startsWith('!')) {
-      // Not a command? Maybe generic NLP?
-      // For now, let's just delegate to 'catat' if it matches NLP pattern or check state
-      // But the prompt says "NLP only active when form is executed" OR "Smart Input".
-      // Let's check for "catat transaksi" keyword or similar.
-      const lower = body.toLowerCase();
-      if (lower === 'catat transaksi' || lower.startsWith('jual ') || lower.startsWith('beli ')) {
-        return registry.karyawan.catat.execute(message);
+    // Check common commands first
+    for (const cmd of commands.common) {
+      if (cmd.name === lowerName || cmd.aliases.includes(lowerName)) {
+        return cmd;
       }
-      return;
     }
 
-    const args = body.slice(1).split(/ +/);
-    const commandName = args.shift().toLowerCase();
-
-    // 2. Route based on Role
-    const userRole = message.user.role;
-    let command = null;
-
-    // Check Common
-    if (registry.common[commandName]) {
-      command = registry.common[commandName];
-    }
-    // Check Role specific
-    else if (userRole === ROLES.KARYAWAN && registry.karyawan[commandName]) {
-      command = registry.karyawan[commandName];
-    } else if (userRole === ROLES.ADMIN && registry.admin[commandName]) {
-      command = registry.admin[commandName];
-    } else if (userRole === ROLES.SUPERADMIN) {
-      // Superadmin can access everything
-      if (registry.superadmin[commandName]) command = registry.superadmin[commandName];
-      else if (registry.admin[commandName]) command = registry.admin[commandName];
-      else if (registry.karyawan[commandName]) command = registry.karyawan[commandName];
-    }
-
-    if (command) {
-      try {
-        await command.execute(message, args);
-      } catch (e) {
-        logger.error(`Command execution failed: ${commandName}`, { error: e.message });
-        await message.reply('❌ Gagal memproses perintah.');
+    // Check role-specific commands
+    const roleCommands = this._getCommandsForRole(userRole);
+    for (const cmd of roleCommands) {
+      if (cmd.name === lowerName || cmd.aliases.includes(lowerName)) {
+        return cmd;
       }
-    } else {
-      // Command not found for this user
-      await message.reply('❓ Perintah tidak dikenali atau Anda tidak punya akses.');
     }
+
+    return null;
+  },
+
+  /**
+   * Get all available commands for role
+   * @param {string} userRole - User role
+   * @returns {Array} Array of command objects
+   */
+  getAllCommands(userRole) {
+    const availableCommands = [...commands.common];
+
+    // Add role-specific commands
+    const roleCommands = this._getCommandsForRole(userRole);
+    availableCommands.push(...roleCommands);
+
+    return availableCommands;
+  },
+
+  /**
+   * Get commands for specific role (including inherited commands)
+   * @param {string} role - User role
+   * @returns {Array} Array of commands
+   * @private
+   */
+  _getCommandsForRole(role) {
+    const roleCommands = [];
+
+    // Karyawan commands
+    if ([ROLES.KARYAWAN, ROLES.ADMIN, ROLES.SUPERADMIN].includes(role)) {
+      roleCommands.push(...commands.karyawan);
+    }
+
+    // Admin commands
+    if ([ROLES.ADMIN, ROLES.SUPERADMIN].includes(role)) {
+      roleCommands.push(...commands.admin);
+    }
+
+    // Superadmin commands
+    if (role === ROLES.SUPERADMIN) {
+      roleCommands.push(...commands.superadmin);
+    }
+
+    return roleCommands;
+  },
+
+  /**
+   * Check if command exists
+   * @param {string} commandName - Command name
+   * @returns {boolean} True if exists
+   */
+  commandExists(commandName) {
+    const lowerName = commandName.toLowerCase();
+
+    const allCommands = [
+      ...commands.common,
+      ...commands.karyawan,
+      ...commands.admin,
+      ...commands.superadmin,
+    ];
+
+    return allCommands.some((cmd) => cmd.name === lowerName || cmd.aliases.includes(lowerName));
   },
 };

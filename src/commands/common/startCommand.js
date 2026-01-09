@@ -1,12 +1,47 @@
-// File: src/commands/common/startCommand.js
+/**
+ * Start Command
+ *
+ * Welcome message based on user role
+ */
 
-const { welcomeGeneral } = require('../../templates/messages/welcomeTemplate');
+const welcomeTemplate = require('../../templates/messages/welcomeTemplate');
+const logger = require('../../utils/logger');
 
 module.exports = {
-  name: 'start',
-  description: 'Mulai bot',
-  async execute(message) {
-    const response = welcomeGeneral(message.user);
-    await message.reply(response);
+  async handler(client, message, user, args) {
+    try {
+      // Get appropriate welcome message based on role
+      let welcomeMessage;
+
+      switch (user.role) {
+        case 'superadmin':
+          welcomeMessage = welcomeTemplate.welcomeSuperadmin(user);
+          break;
+        case 'admin':
+          welcomeMessage = welcomeTemplate.welcomeAdmin(user);
+          break;
+        case 'karyawan':
+          welcomeMessage = welcomeTemplate.welcomeKaryawan(user);
+          break;
+        case 'investor':
+          welcomeMessage = welcomeTemplate.welcomeInvestor(user);
+          break;
+        default:
+          welcomeMessage = 'Selamat datang! ';
+      }
+
+      await message.reply(welcomeMessage);
+
+      logger.info('Start command executed', {
+        userId: user.id,
+        role: user.role,
+      });
+    } catch (error) {
+      logger.error('Error in start command', {
+        userId: user.id,
+        error: error.message,
+      });
+      await message.reply('Terjadi kesalahan. Silakan coba lagi.');
+    }
   },
 };

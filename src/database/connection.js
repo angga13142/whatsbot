@@ -5,17 +5,22 @@ const config = require('../config/database');
 const logger = require('../utils/logger');
 
 // 1. Read DB_TYPE and configure
-const dbType = process.env.DB_TYPE || 'sqlite';
 let dbConfig;
 
-if (process.env.NODE_ENV === 'test') {
-  dbConfig = config.test;
-} else if (config[dbType]) {
-  // If user provided 'development' or 'production' as DB_TYPE (unlikely but possible)
-  dbConfig = config[dbType];
+// If config module has getDatabaseConfig method, use it
+if (typeof config.getDatabaseConfig === 'function') {
+  dbConfig = config.getDatabaseConfig();
+
+  // Override for test environment if needed
+  if (process.env.NODE_ENV === 'test') {
+    dbConfig.connection = {
+      filename: ':memory:',
+    };
+  }
 } else {
-  // Fallback to active config calculated in config/database.js
-  dbConfig = config.active;
+  // Fallback for legacy config structure (development/production keys)
+  const env = process.env.NODE_ENV || 'development';
+  dbConfig = config[env];
 }
 
 // 2. Initialize Knex instance
@@ -24,7 +29,7 @@ const db = knex(dbConfig);
 // 3. Test connection on startup
 db.raw('SELECT 1')
   .then(() => {
-    logger.info(`✅ Database connected successfully (${dbType})`);
+    logger.info(`✅ Database connected successfully (${dbConfig.client})`);
   })
   .catch((err) => {
     logger.error('❌ Database connection failed:', err);

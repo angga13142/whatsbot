@@ -1,55 +1,124 @@
-// File: src/schedulers/backupScheduler.js
-
 /**
  * Backup Scheduler
  *
- * Purpose: Schedule database backups.
- *
- * @module schedulers/backupScheduler
+ * Automatically backs up database
+ * Runs at configured interval (default: daily)
  */
 
 const cron = require('node-cron');
-const config = require('../config/app');
-const logger = require('../utils/logger');
 const { exec } = require('child_process');
-const path = require('path');
+const { promisify } = require('util');
+const logger = require('../utils/logger');
+const config = require('../config/app');
 
-module.exports = {
-  initialize() {
-    if (!config.backup.enabled) {
-      logger.info('Backup scheduler is disabled.');
-      return;
-    }
+const execAsync = promisify(exec);
 
-    const intervalHours = config.backup.intervalHours;
-    // Simple cron: run every N hours (e.g. "0 */24 * * *")
-    // If 24, run at midnight
-    const cronExpression = `0 */${intervalHours} * * *`;
+class BackupScheduler {
+  constructor() {
+    this.task = null;
+    this.isRunning = false;
+  }
 
-    logger.info(`Scheduling Auto-Backup every ${intervalHours} hours`);
-
-    cron.schedule(
-      cronExpression,
-      async () => {
-        logger.info('⏳ Running Auto-Backup Job...');
-
-        // Execute existing backup script
-        const scriptPath = path.join(__dirname, '../../scripts/backup.js');
-
-        exec(`node ${scriptPath}`, (error, stdout, stderr) => {
-          if (error) {
-            logger.error(`Backup job failed: ${error.message}`);
-            return;
-          }
-          if (stderr) {
-            // logger.warn(`Backup stderr: ${stderr}`); // scripts might log to stderr for info
-          }
-          logger.info('✅ Auto-Backup Job Completed', { output: stdout.trim() });
-        });
-      },
-      {
-        timezone: config.business.timezone,
+  /**
+   * Start the scheduler
+   */
+  start() {
+    try {
+      // Only start if auto backup is enabled
+      if (!config.backup.enabled) {
+        logger.info('Auto backup is disabled');
+        return;
       }
-    );
-  },
-};
+
+      const intervalHours = config.backup.intervalHours;
+
+      // Convert hours to cron expression
+      let cronExpression;
+      if (intervalHours === 24) {
+        // Daily at 2 AM
+        cronExpression = '0 2 * * *';
+      } else if (intervalHours === 12) {
+        // Twice daily at 2 AM and 2 PM
+        cronExpression = '0 2,14 * * *';
+      } else {
+        // Every N hours
+        cronExpression = `0 */${intervalHours} * * *`;
+      }
+
+      logger.info('Starting backup scheduler', {
+        schedule: cronExpression,
+        intervalHours,
+      });
+
+      this.task = cron.schedule(
+        cronExpression,
+        async () => {
+          await this.runBackup();
+        },
+        {
+          timezone: config.business.timezone,
+        }
+      );
+
+      this.isRunning = true;
+      logger.info('Backup scheduler started successfully');
+    } catch (error) {
+      logger.error('Failed to start backup scheduler', {
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Run backup
+   */
+  async runBackup() {
+    try {
+      logger.info('Running database backup...');
+
+      // Run backup script
+      const { stdout, stderr } = await execAsync('node scripts/backup.js');
+
+      if (stderr) {
+        logger.warn('Backup script warnings', { stderr });
+      }
+
+      logger.info('Database backup completed successfully', { stdout });
+    } catch (error) {
+      logger.error('Error running backup', {
+        error: error.message,
+      });
+      // Don't throw - let scheduler continue
+    }
+  }
+
+  /**
+   * Stop the scheduler
+   */
+  stop() {
+    if (this.task) {
+      this.task.stop();
+      this.isRunning = false;
+      logger.info('Backup scheduler stopped');
+    }
+  }
+
+  /**
+   * Get scheduler status
+   * @returns {boolean} True if running
+   */
+  getStatus() {
+    return this.isRunning;
+  }
+
+  /**
+   * Manual trigger (for testing)
+   */
+  async triggerManually() {
+    logger.info('Manually triggering backup');
+    await this.runBackup();
+  }
+}
+
+module.exports = new BackupScheduler();

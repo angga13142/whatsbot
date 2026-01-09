@@ -1,5 +1,5 @@
 /**
- * Command Stub
+ * Admin Command Stub
  */
 module.exports = {
   async handler(client, message, user, args) {

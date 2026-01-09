@@ -1,23 +1,8 @@
-// File: src/commands/bos/rejectCommand.js
-
-const transactionService = require('../../services/transactionService');
-
+/**
+ * Command Stub
+ */
 module.exports = {
-  name: 'reject',
-  description: 'Tolak transaksi',
-  async execute(message, args) {
-    const trxId = args[0];
-
-    if (!trxId) {
-      await message.reply('⚠️ Masukkan ID Transaksi. Contoh: /reject 15');
-      return;
-    }
-
-    try {
-      const trx = await transactionService.rejectTransaction(parseInt(trxId), message.user.id);
-      await message.reply(`✅ Transaksi ${trx.transaction_id} ditolak.`);
-    } catch (e) {
-      await message.reply(`❌ Gagal reject: ${e.message}`);
-    }
+  async handler(client, message, user, args) {
+    await message.reply('🚧 Fitur ini sedang dalam pengembangan.');
   },
 };

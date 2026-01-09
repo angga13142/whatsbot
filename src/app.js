@@ -1,73 +1,246 @@
-// File: src/app.js
-
 /**
- * Main Application
+ * Main Application Entry Point
  *
- * Purpose: Entry point. Initialize Database, Bot, and Schedulers.
+ * Initializes all components and starts the bot
  */
 
+const dotenv = require('dotenv');
+const chalk = require('chalk');
+const boxen = require('boxen');
+
+// Load environment variables first
+dotenv.config();
+
+// Import modules
 const config = require('./config/app');
 const logger = require('./utils/logger');
-require('./database/connection');
-const botClient = require('./bot/client');
-const notificationService = require('./services/notificationService');
-
-// Schedulers
+const dbConnection = require('./database/connection');
+const whatsappClient = require('./bot/client');
 const dailyReportScheduler = require('./schedulers/dailyReportScheduler');
 const backupScheduler = require('./schedulers/backupScheduler');
 
-// Global Error Handling
-process.on('uncaughtException', (err) => {
-  logger.error('UNCAUGHT EXCEPTION! 💥 Shutting down...', { error: err.message, stack: err.stack });
-  process.exit(1);
-});
+/**
+ * Display startup banner
+ */
+function displayBanner() {
+  console.log('\n');
+  console.log(
+    boxen(
+      chalk.bold.cyan('💰 WHATSAPP CASHFLOW BOT\n\n') +
+        chalk.white(`Version: ${config.app.version}\n`) +
+        chalk.gray(`Environment: ${config.app.environment}`),
+      {
+        padding: 1,
+        margin: 1,
+        borderStyle: 'round',
+        borderColor: 'cyan',
+      }
+    )
+  );
+  console.log('\n');
+}
 
-process.on('unhandledRejection', (err) => {
-  logger.error('UNHANDLED REJECTION! 💥 Shutting down...', { error: err.message });
-  process.exit(1);
-});
-
-const start = async () => {
+/**
+ * Initialize database
+ */
+async function initializeDatabase() {
   try {
-    // 1. Startup Banner
-    console.log('══════════════════════════════════════════════════════════');
-    console.log(`🤖 ${config.app.name} v${config.app.version}`);
-    console.log(`🌍 Environment: ${config.app.env}`);
-    console.log(`📱 Bot Phone: ${config.bot.phoneNumber}`);
-    console.log(`🔄 Auth Method: ${config.bot.authMethod.toUpperCase()}`);
-    console.log('══════════════════════════════════════════════════════════');
+    logger.info('Initializing database.. .');
+    console.log(chalk.cyan('📦 Initializing database...'));
 
-    // 2. Check Database Connection
-    // (Managed by connection.js automatically on require, but we can double check)
-    // await db.raw('SELECT 1'); // handled in connection.js
+    // Test connection
+    await dbConnection.raw('SELECT 1');
 
-    // 3. Initialize WhatsApp Client
-    const client = botClient.initialize();
+    // Run migrations
+    try {
+      const [batchNo, migrations] = await dbConnection.migrate.latest();
+      if (migrations.length > 0) {
+        logger.info(`Ran ${migrations.length} migration(s) in batch ${batchNo}`);
+        console.log(chalk.green(`   ✅ Ran ${migrations.length} migration(s)`));
+      } else {
+        console.log(chalk.green('   ✅ Database is up to date'));
+      }
+    } catch (migrationError) {
+      logger.warn('Migration check failed (may be normal on first run)', {
+        error: migrationError.message,
+      });
+    }
 
-    // 4. Link Notification Service
-    notificationService.setClient(client);
+    logger.info('Database initialized successfully');
+    console.log(chalk.green('✅ Database ready\n'));
 
-    // 5. Initialize Schedulers
-    dailyReportScheduler.initialize();
-    backupScheduler.initialize();
-
-    // 6. Ready
-    logger.info('🚀 System initialization completed. Waiting for WhatsApp authentication...');
+    return true;
   } catch (error) {
-    logger.error('❌ Failed to start application', { error: error.message, stack: error.stack });
+    logger.error('Failed to initialize database', { error: error.message });
+    console.log(chalk.red('❌ Database initialization failed'));
+    console.log(chalk.red(`   Error: ${error.message}\n`));
+    throw error;
+  }
+}
+
+/**
+ * Initialize WhatsApp client
+ */
+async function initializeWhatsApp() {
+  try {
+    logger.info('Initializing WhatsApp client...');
+    console.log(chalk.cyan('📱 Initializing WhatsApp client...'));
+
+    // Check if pairing code is needed
+    if (config.bot.authMethod === 'pairing' && config.bot.phoneNumber) {
+      // Will request pairing code after initialization
+    }
+
+    await whatsappClient.initialize();
+
+    // Request pairing code if needed
+    if (config.bot.authMethod === 'pairing' && config.bot.phoneNumber) {
+      await whatsappClient.requestPairingCode(config.bot.phoneNumber);
+    }
+
+    logger.info('WhatsApp client initialized');
+
+    return true;
+  } catch (error) {
+    logger.error('Failed to initialize WhatsApp client', { error: error.message });
+    console.log(chalk.red('❌ WhatsApp initialization failed'));
+    console.log(chalk.red(`   Error: ${error.message}\n`));
+    throw error;
+  }
+}
+
+/**
+ * Initialize schedulers
+ */
+function initializeSchedulers() {
+  try {
+    logger.info('Initializing schedulers...');
+    console.log(chalk.cyan('⏰ Initializing schedulers... '));
+
+    // Start daily report scheduler
+    dailyReportScheduler.start();
+    console.log(chalk.green(`   ✅ Daily report:  ${config.business.dailyReportTime}`));
+
+    // Start backup scheduler (if enabled)
+    if (config.backup.enabled) {
+      backupScheduler.start();
+      console.log(chalk.green(`   ✅ Auto backup: Every ${config.backup.intervalHours}h`));
+    } else {
+      console.log(chalk.gray('   ⏭️  Auto backup:  Disabled'));
+    }
+
+    console.log(chalk.green('✅ Schedulers ready\n'));
+
+    logger.info('Schedulers initialized successfully');
+  } catch (error) {
+    logger.error('Failed to initialize schedulers', { error: error.message });
+    console.log(chalk.yellow('⚠️  Schedulers initialization failed (non-critical)\n'));
+    // Don't throw - schedulers are non-critical
+  }
+}
+
+/**
+ * Setup graceful shutdown
+ */
+function setupGracefulShutdown() {
+  const shutdown = async (signal) => {
+    console.log('\n');
+    logger.info(`Received ${signal}, shutting down gracefully...`);
+    console.log(chalk.yellow(`\n⚠️  Received ${signal}, shutting down.. .\n`));
+
+    try {
+      // Stop schedulers
+      console.log(chalk.cyan('⏰ Stopping schedulers... '));
+      dailyReportScheduler.stop();
+      backupScheduler.stop();
+      console.log(chalk.green('✅ Schedulers stopped\n'));
+
+      // Close WhatsApp client
+      console.log(chalk.cyan('📱 Closing WhatsApp connection...'));
+      await whatsappClient.destroy();
+      console.log(chalk.green('✅ WhatsApp closed\n'));
+
+      // Close database
+      console.log(chalk.cyan('📦 Closing database connection...'));
+      await dbConnection.destroy();
+      console.log(chalk.green('✅ Database closed\n'));
+
+      logger.info('Graceful shutdown completed');
+      console.log(chalk.green('👋 Goodbye!\n'));
+
+      process.exit(0);
+    } catch (error) {
+      logger.error('Error during shutdown', { error: error.message });
+      console.log(chalk.red('❌ Error during shutdown\n'));
+      process.exit(1);
+    }
+  };
+
+  // Handle termination signals
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+  // Handle uncaught errors
+  process.on('uncaughtException', (error) => {
+    logger.error('Uncaught exception', { error: error.message, stack: error.stack });
+    console.log(chalk.red('\n❌ Uncaught exception: '), error.message);
+    shutdown('UNCAUGHT_EXCEPTION');
+  });
+
+  process.on('unhandledRejection', (reason, promise) => {
+    logger.error('Unhandled rejection', { reason, promise });
+    console.log(chalk.red('\n❌ Unhandled rejection:'), reason);
+  });
+}
+
+/**
+ * Main application startup
+ */
+async function start() {
+  try {
+    // Display banner
+    displayBanner();
+
+    // Setup graceful shutdown
+    setupGracefulShutdown();
+
+    // Initialize components
+    await initializeDatabase();
+    await initializeWhatsApp();
+    initializeSchedulers();
+
+    // Display ready status (will be called by event handler)
+    // displayReadyStatus() is called in eventHandler. onReady()
+
+    logger.info('Application started successfully', {
+      version: config.app.version,
+      environment: config.app.environment,
+    });
+  } catch (error) {
+    logger.error('Failed to start application', {
+      error: error.message,
+      stack: error.stack,
+    });
+
+    console.log('\n');
+    console.log(
+      boxen(
+        chalk.bold.red('❌ STARTUP FAILED\n\n') +
+          chalk.white('Error:\n') +
+          chalk.gray(error.message),
+        {
+          padding: 1,
+          margin: 1,
+          borderStyle: 'round',
+          borderColor: 'red',
+        }
+      )
+    );
+    console.log('\n');
+
     process.exit(1);
   }
-};
+}
 
+// Start the application
 start();
-
-// Graceful Shutdown
-const shutdown = () => {
-  logger.info('👋 SIGTERM RECEIVED. Shutting down gracefully');
-  // client.destroy(); // if supported
-  // db.destroy();
-  process.exit(0);
-};
-
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);

@@ -1,34 +1,64 @@
-// File: src/commands/common/helpCommand.js
+/**
+ * Help Command
+ *
+ * Shows available commands for user's role
+ */
 
-const { bold } = require('../../utils/richText');
+const commandRegistry = require('../index');
+const { createBox, createDivider, bold } = require('../../utils/richText');
+const logger = require('../../utils/logger');
 
 module.exports = {
-  name: 'help',
-  description: 'Daftar perintah',
-  async execute(message) {
-    // In a real app, generate dynamically from registry.
-    // For MVP, static string based on role.
+  async handler(client, message, user, args) {
+    try {
+      // Get all available commands for user
+      const commands = commandRegistry.getAllCommands(user.role);
 
-    const role = message.user.role;
-    let content = `Daftar perintah untuk ${bold(role.toUpperCase())}:\n\n`;
+      // Group commands by category
+      const commonCmds = commands.filter((cmd) => ['start', 'help', 'status'].includes(cmd.name));
+      const mainCmds = commands.filter((cmd) => !['start', 'help', 'status'].includes(cmd.name));
 
-    content += `${bold('/start')} - Menu utama\n`;
-    content += `${bold('/status')} - Cek status profil\n`;
+      // Build help message
+      let helpText = '';
 
-    if (role === 'karyawan' || role === 'superadmin') {
-      content += `\n${bold('🛠️ TRANSAKSI')}\n`;
-      content += `${bold('/catat')} - Input transaksi baru\n`;
-      content += `${bold('/laporan')} - Laporan harian Anda\n`;
+      helpText += createBox('📚 BANTUAN', `Daftar perintah untuk ${user.role}`, 50);
+      helpText += '\n\n';
+
+      // Common commands
+      if (commonCmds.length > 0) {
+        helpText += bold('🔹 Perintah Umum:') + '\n';
+        for (const cmd of commonCmds) {
+          helpText += `• ${cmd.usage}\n`;
+          helpText += `  ${cmd.description}\n\n`;
+        }
+        helpText += createDivider('─', 50) + '\n\n';
+      }
+
+      // Main commands
+      if (mainCmds.length > 0) {
+        helpText += bold('🔹 Perintah Utama:') + '\n';
+        for (const cmd of mainCmds) {
+          helpText += `• ${cmd.usage}\n`;
+          helpText += `  ${cmd.description}\n\n`;
+        }
+      }
+
+      helpText += createDivider('━', 50) + '\n';
+      helpText += '💡 Tip:  Anda juga bisa gunakan bahasa natural\n';
+      helpText += '   Contoh: "catat transaksi", "laporan hari ini"';
+
+      await message.reply(helpText);
+
+      logger.info('Help command executed', {
+        userId: user.id,
+        commandCount: commands.length,
+      });
+    } catch (error) {
+      logger.error('Error in help command', {
+        userId: user.id,
+        error: error.message,
+      });
+      await message.reply('Terjadi kesalahan. Silakan coba lagi.');
     }
-
-    if (role === 'admin' || role === 'superadmin') {
-      content += `\n${bold('👔 ADMIN')}\n`;
-      content += `${bold('/approve [id]')} - Setujui transaksi\n`;
-      content += `${bold('/reject [id]')} - Tolak transaksi\n`;
-      content += `${bold('/pending')} - Lihat pending list\n`;
-      content += `${bold('/addkaryawan')} - Tambah user baru\n`;
-    }
-
-    await message.reply(content);
   },
 };
