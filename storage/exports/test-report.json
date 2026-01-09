@@ -1,0 +1,22 @@
+{
+  "execution_id": 2,
+  "execution_time_ms": 61,
+  "data": [],
+  "summary": {
+    "total_transactions": 0,
+    "total_income": 0,
+    "total_expense": 0,
+    "net": 0,
+    "avg_amount": 0,
+    "min_amount": 0,
+    "max_amount": 0,
+    "first_date": null,
+    "last_date": null
+  },
+  "grouped": null,
+  "pagination": {
+    "total": 0,
+    "limit": 100,
+    "offset": 0
+  }
+}

@@ -75,8 +75,10 @@
   "dependencies": {
     "bcrypt": "^5.1.1",
     "boxen": "^5.1.2",
+    "canvas": "3.2.0",
     "chalk": "^4.1.2",
-    "chartjs-node-canvas": "^4.1.6",
+    "chart.js": "3.9.1",
+    "chartjs-node-canvas": "4.1.6",
     "cli-table3": "^0.6.3",
     "compromise": "^14.10.0",
     "dayjs": "^1.11.10",

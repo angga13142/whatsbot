@@ -43,10 +43,14 @@ module.exports = {
    */
   async findByUser(userId, limit = 100) {
     try {
-      return await db('audit_logs')
+      const rows = await db('audit_logs')
         .where({ user_id: userId })
         .orderBy('created_at', 'desc')
         .limit(limit);
+      return rows.map((row) => ({
+        ...row,
+        details: typeof row.details === 'string' ? JSON.parse(row.details) : row.details,
+      }));
     } catch (error) {
       throw new Error(`Failed to find user logs: ${error.message}`);
     }
@@ -60,12 +64,16 @@ module.exports = {
    */
   async findByAction(action, limit = 100) {
     try {
-      return await db('audit_logs')
+      const rows = await db('audit_logs')
         .join('users', 'audit_logs.user_id', 'users.id')
         .select('audit_logs.*', 'users.full_name', 'users.phone_number')
         .where({ action })
         .orderBy('created_at', 'desc')
         .limit(limit);
+      return rows.map((row) => ({
+        ...row,
+        details: typeof row.details === 'string' ? JSON.parse(row.details) : row.details,
+      }));
     } catch (error) {
       throw new Error(`Failed to find logs by action: ${error.message}`);
     }

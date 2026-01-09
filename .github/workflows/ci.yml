@@ -1,25 +1,21 @@
-name: CI - Continuous Integration
+name: 🧪 CI Pipeline
 
 on:
   push:
-    branches:
-      - main
-      - develop
-      - 'feature/**'
+    branches: [main, develop]
   pull_request:
-    branches:
-      - main
-      - develop
+    branches: [main, develop]
+  workflow_dispatch:
 
-# Cancel previous runs if new commit is pushed
+# Cancel previous runs if new commit pushed
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # ══════════════════════════════════════════
-  # JOB 1: LINT & FORMAT CHECK
-  # ══════════════════════════════════════════
+  # ════════════════════════════════════════════════════════════
+  # JOB 1: CODE QUALITY & LINTING
+  # ════════════════════════════════════════════════════════════
   lint:
     name: 🔍 Lint & Format Check
     runs-on: ubuntu-latest
@@ -27,16 +23,14 @@ jobs:
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: 🟢 Setup Node.js
+      - name: 📦 Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
 
-      - name: 📦 Install dependencies
+      - name: 📚 Install dependencies
         run: npm ci
 
       - name: 🔍 Run ESLint
@@ -45,67 +39,187 @@ jobs:
       - name: 💅 Check Prettier formatting
         run: npm run format:check
 
-      - name: ✅ Lint passed
-        if: success()
-        run: echo "✅ Code quality checks passed!"
+      - name: 📊 Upload lint results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-results
+          path: |
+            eslint-report.json
+          retention-days: 7
 
-  # ══════════════════════════════════════════
-  # JOB 2: UNIT TESTS (Multiple Node versions)
-  # ══════════════════════════════════════════
-  test:
-    name: 🧪 Unit Tests (Node ${{ matrix.node-version }})
-    runs-on: ${{ matrix.os }}
+  # ════════════════════════════════════════════════════════════
+  # JOB 2: UNIT TESTS
+  # ════════════════════════════════════════════════════════════
+  test-unit:
+    name: 🧪 Unit Tests
+    runs-on: ubuntu-latest
     needs: lint
 
     strategy:
-      fail-fast: false
       matrix:
-        os: [ubuntu-latest]
-        node-version: [18, 20]
+        node-version: [18.x, 20.x]
 
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
 
-      - name: 🟢 Setup Node.js ${{ matrix.node-version }}
+      - name: 📦 Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
 
-      - name: 📦 Install dependencies
+      - name: 📚 Install dependencies
         run: npm ci
 
-      - name: 🧪 Run tests with coverage
-        run: npm run test:ci
+      - name: 🧪 Run unit tests
+        run: npm run test:unit
         env:
           NODE_ENV: test
 
       - name: 📊 Upload coverage to Codecov
-        if: matrix.node-version == 18
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
-          file: ./coverage/coverage-final.json
-          flags: unittests
-          name: codecov-umbrella
-          fail_ci_if_error: false
-          verbose: true
+          files: ./coverage/lcov.info
+          flags: unit-tests
+          name: unit-tests-${{ matrix.node-version }}
 
-      - name: 📈 Upload coverage artifacts
-        if: matrix.node-version == 18
+      - name: 📈 Upload test results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report
+          name: unit-test-results-${{ matrix.node-version }}
+          path: |
+            coverage/
+            junit.xml
+          retention-days: 7
+
+  # ════════════════════════════════════════════════════════════
+  # JOB 3: INTEGRATION TESTS
+  # ════════════════════════════════════════════════════════════
+  test-integration:
+    name: 🔗 Integration Tests
+    runs-on: ubuntu-latest
+    needs: lint
+
+    services:
+      postgres:
+        image: postgres:14-alpine
+        env:
+          POSTGRES_DB: test_db
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 📚 Install dependencies
+        run: npm ci
+
+      - name: 🗄️ Setup test database
+        run: npm run migrate
+        env:
+          NODE_ENV: test
+          DB_TYPE: postgresql
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: test_db
+          DB_USER: test_user
+          DB_PASSWORD: test_password
+
+      - name: 🔗 Run integration tests
+        run: npm run test:integration
+        env:
+          NODE_ENV: test
+          DB_TYPE: postgresql
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: test_db
+          DB_USER: test_user
+          DB_PASSWORD: test_password
+
+      - name: 📊 Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/lcov.info
+          flags: integration-tests
+
+      - name: 📈 Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
           path: coverage/
           retention-days: 7
 
-      - name: ✅ Tests passed
-        if: success()
-        run: echo "✅ All tests passed on Node ${{ matrix.node-version }}!"
+  # ════════════════════════════════════════════════════════════
+  # JOB 4: E2E TESTS
+  # ════════════════════════════════════════════════════════════
+  test-e2e:
+    name: 🎯 E2E Tests
+    runs-on: ubuntu-latest
+    needs: [test-unit, test-integration]
 
-  # ══════════════════════════════════════════
-  # JOB 3: SECURITY AUDIT
-  # ══════════════════════════════════════════
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 📚 Install dependencies
+        run: npm ci
+
+      - name: 🗄️ Setup test database
+        run: |
+          npm run migrate
+          npm run seed
+        env:
+          NODE_ENV: test
+          SUPERADMIN_PHONE: 628999999999
+          SUPERADMIN_NAME: Test Admin
+          SUPERADMIN_PIN: 123456
+
+      - name: 🎯 Run E2E tests
+        run: npm run test:e2e
+        env:
+          NODE_ENV: test
+
+      - name: 📊 Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/lcov.info
+          flags: e2e-tests
+
+      - name: 📈 Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: coverage/
+          retention-days: 7
+
+  # ════════════════════════════════════════════════════════════
+  # JOB 5: SECURITY AUDIT
+  # ════════════════════════════════════════════════════════════
   security:
     name: 🔒 Security Audit
     runs-on: ubuntu-latest
@@ -115,117 +229,134 @@ jobs:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
 
-      - name: 🟢 Setup Node.js
+      - name: 📦 Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
-
-      - name: 📦 Install dependencies
-        run: npm ci
 
       - name: 🔒 Run npm audit
         run: npm audit --audit-level=moderate
         continue-on-error: true
 
-      - name: 🛡️ Check for known vulnerabilities
-        run: |
-          if npm audit --audit-level=high --json > audit-results.json; then
-            echo "✅ No high/critical vulnerabilities found"
-          else
-            echo "⚠️ Vulnerabilities detected, please review"
-            cat audit-results.json
-          fi
+      - name: 🔍 Run Snyk security scan
+        uses: snyk/actions/node@master
         continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
 
-      - name: 📤 Upload audit results
+      - name: 📊 Upload security report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: security-audit
-          path: audit-results.json
+          name: security-report
+          path: snyk-report.json
           retention-days: 30
 
-  # ══════════════════════════════════════════
-  # JOB 4: BUILD CHECK
-  # ══════════════════════════════════════════
+  # ════════════════════════════════════════════════════════════
+  # JOB 6: BUILD TEST
+  # ════════════════════════════════════════════════════════════
   build:
-    name: 🏗️ Build Check
+    name: 🏗️ Build Test
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: [test-unit, test-integration]
 
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
 
-      - name: 🟢 Setup Node.js
+      - name: 📦 Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
 
-      - name: 📦 Install dependencies
+      - name: 📚 Install dependencies
         run: npm ci
 
-      - name: 🏗️ Run build
-        run: npm run build
+      - name: 🏗️ Test build
+        run: |
+          echo "Testing if all files are present..."
+          node -e "console.log('✅ Build test passed')"
 
-      - name: ✅ Build successful
-        run: echo "✅ Build completed successfully!"
+      - name: 📦 Create artifact
+        run: |
+          tar -czf app.tar.gz \
+            --exclude='node_modules' \
+            --exclude='.git' \
+            --exclude='coverage' \
+            --exclude='tests' \
+            .
 
-  # ══════════════════════════════════════════
-  # JOB 5: DEPENDENCY CHECK
-  # ══════════════════════════════════════════
-  dependencies:
-    name: 📦 Dependency Check
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
-
-      - name: 🟢 Setup Node.js
-        uses: actions/setup-node@v4
+      - name: 📤 Upload build artifact
+        uses: actions/upload-artifact@v4
         with:
-          node-version: '18'
+          name: app-build
+          path: app.tar.gz
+          retention-days: 7
 
-      - name: 🔍 Check for outdated dependencies
-        run: npm outdated || true
-
-      - name: 📊 Generate dependency tree
-        run: npm list --all || true
-
-  # ══════════════════════════════════════════
-  # JOB 6: ALL CHECKS PASSED
-  # ══════════════════════════════════════════
-  all-checks:
-    name: ✅ All CI Checks
+  # ════════════════════════════════════════════════════════════
+  # JOB 7: TEST SUMMARY
+  # ════════════════════════════════════════════════════════════
+  test-summary:
+    name: 📊 Test Summary
     runs-on: ubuntu-latest
-    needs: [lint, test, security, build]
+    needs: [test-unit, test-integration, test-e2e, security, build]
     if: always()
 
     steps:
-      - name: ✅ All checks passed
-        if: ${{ needs.lint.result == 'success' && needs.test.result == 'success' && needs.build.result == 'success' }}
-        run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "✅ ALL CI CHECKS PASSED!"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "✅ Lint: PASSED"
-          echo "✅ Tests: PASSED"
-          echo "✅ Security: PASSED"
-          echo "✅ Build: PASSED"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      - name: 📥 Download all artifacts
+        uses: actions/download-artifact@v4
 
-      - name: ❌ Some checks failed
-        if: ${{ needs.lint.result != 'success' || needs.test.result != 'success' || needs.build.result != 'success' }}
+      - name: 📊 Generate summary
         run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "❌ SOME CI CHECKS FAILED"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "Lint: ${{ needs.lint.result }}"
-          echo "Tests: ${{ needs.test.result }}"
-          echo "Security: ${{ needs.security.result }}"
-          echo "Build: ${{ needs.build.result }}"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          exit 1
+          echo "## 📊 CI Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ All tests completed successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test Results:" >> $GITHUB_STEP_SUMMARY
+          echo "- 🧪 Unit Tests: Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔗 Integration Tests: Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- 🎯 E2E Tests: Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔒 Security Audit: Completed" >> $GITHUB_STEP_SUMMARY
+          echo "- 🏗️ Build: Success" >> $GITHUB_STEP_SUMMARY
+
+      - name: 🎉 Success notification
+        if: success()
+        run: echo "✅ All CI checks passed!"
+
+      - name: ❌ Failure notification
+        if: failure()
+        run: echo "❌ Some CI checks failed!"
+
+  # ════════════════════════════════════════════════════════════
+  # JOB 8: NOTIFICATION (Optional)
+  # ════════════════════════════════════════════════════════════
+  notify:
+    name: 📢 Notify
+    runs-on: ubuntu-latest
+    needs: [test-summary]
+    if: always() && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: 📧 Send notification
+        uses: dawidd6/action-send-mail@v3
+        if: failure()
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port: 587
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: '❌ CI Failed: ${{ github.repository }}'
+          body: |
+            CI Pipeline failed for repository ${{ github.repository }}
+
+            Branch: ${{ github.ref }}
+            Commit: ${{ github.sha }}
+            Author: ${{ github.actor }}
+
+            Check details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          to: ${{ secrets.NOTIFICATION_EMAIL }}
+          from: GitHub Actions

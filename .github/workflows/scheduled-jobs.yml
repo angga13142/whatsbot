@@ -1,0 +1,75 @@
+name: ⏰ Scheduled Jobs
+
+on:
+  schedule:
+    # Daily backup at 2 AM UTC
+    - cron: '0 2 * * *'
+    # Weekly dependency check on Monday at 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  # ════════════════════════════════════════════════════════════
+  # DAILY BACKUP
+  # ════════════════════════════════════════════════════════════
+  backup:
+    name: 💾 Database Backup
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 2 * * *' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: 🔐 Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.PROD_HOST }} >> ~/.ssh/known_hosts
+
+      - name: 💾 Create backup
+        run: |
+          ssh ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} << 'EOF'
+            cd /var/www/cashflow-bot
+            npm run backup
+            echo "✅ Backup completed"
+          EOF
+
+      - name: 📤 Upload to cloud storage (optional)
+        run: |
+          # Upload to S3, Google Cloud Storage, etc.
+          echo "Backup stored on server"
+
+  # ════════════════════════════════════════════════════════════
+  # DEPENDENCY UPDATES
+  # ════════════════════════════════════════════════════════════
+  dependency-check:
+    name: 📦 Check Dependencies
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 9 * * 1' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: 📊 Check outdated packages
+        run: |
+          npm outdated || true
+
+      - name: 🔒 Security audit
+        run: npm audit --audit-level=moderate || true
+
+      - name: 📝 Create issue if updates needed
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '📦 Weekly Dependency Update Check',
+              body: 'Automated dependency check completed. Review `npm outdated` output.',
+              labels: ['dependencies', 'maintenance']
+            });

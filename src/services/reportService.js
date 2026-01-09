@@ -121,13 +121,13 @@ class ReportService {
       let totalExpense = 0;
       let transactionCount = 0;
 
-      const currentDate = dayjs(startDate);
+      let currentDate = dayjs(startDate);
       while (currentDate.isBefore(endDate) || currentDate.isSame(endDate, 'day')) {
         const dailySummary = await transactionService.calculateDailySummary(currentDate.toDate());
         totalIncome += dailySummary.income;
         totalExpense += dailySummary.expense;
         transactionCount += dailySummary.total_transactions;
-        currentDate.add(1, 'day');
+        currentDate = currentDate.add(1, 'day');
       }
 
       const report = {

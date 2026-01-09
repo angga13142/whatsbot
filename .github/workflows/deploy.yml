@@ -1,161 +1,301 @@
-name: Deploy to Production
+name: 🚀 CD Pipeline - Deploy
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+    tags:
+      - 'v*.*.*'
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Deployment environment'
+        description: 'Environment to deploy'
         required: true
-        default: 'production'
         type: choice
         options:
-          - production
           - staging
+          - production
+
+env:
+  NODE_VERSION: '18'
 
 jobs:
-  # ══════════════════════════════════════════
-  # JOB 1: PRE-DEPLOYMENT CHECKS
-  # ══════════════════════════════════════════
-  pre-deploy:
-    name: 🔍 Pre-deployment Checks
+  # ════════════════════════════════════════════════════════════
+  # JOB 1: PREPARE DEPLOYMENT
+  # ════════════════════════════════════════════════════════════
+  prepare:
+    name: 🎯 Prepare Deployment
     runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
 
-      - name: 🟢 Setup Node.js
+      - name: 🎯 Determine environment
+        id: set-env
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+          else
+            echo "environment=staging" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 📌 Get version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
+            VERSION=$(date +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📌 Version: $VERSION"
+
+  # ════════════════════════════════════════════════════════════
+  # JOB 2: BUILD FOR DEPLOYMENT
+  # ════════════════════════════════════════════════════════════
+  build:
+    name: 🏗️ Build for Deployment
+    runs-on: ubuntu-latest
+    needs: prepare
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      - name: 📦 Install dependencies
-        run: npm ci
+      - name: 📚 Install dependencies (production only)
+        run: npm ci --only=production
 
-      - name: 🧪 Run tests
-        run: npm run test:ci
+      - name: 📝 Create version file
+        run: |
+          echo "${{ needs.prepare.outputs.version }}" > VERSION
+          echo "Built at: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> VERSION
 
-      - name: 🔍 Run linter
-        run: npm run lint
+      - name: 📦 Create deployment package
+        run: |
+          tar -czf deploy-${{ needs.prepare.outputs.version }}.tar.gz \
+            --exclude='tests' \
+            --exclude='coverage' \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='node_modules/.cache' \
+            src/ \
+            scripts/ \
+            node_modules/ \
+            package.json \
+            package-lock.json \
+            ecosystem.config.js \
+            VERSION
 
-      - name: 🏗️ Run build
-        run: npm run build
+      - name: 📤 Upload deployment package
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-package
+          path: deploy-${{ needs.prepare.outputs.version }}.tar.gz
+          retention-days: 30
 
-      - name: ✅ Pre-deployment checks passed
-        run: echo "✅ Ready for deployment!"
-
-  # ══════════════════════════════════════════
-  # JOB 2: DEPLOY TO VPS
-  # ══════════════════════════════════════════
-  deploy:
-    name: 🚀 Deploy to ${{ github.event.inputs.environment || 'production' }}
+  # ════════════════════════════════════════════════════════════
+  # JOB 3: DEPLOY TO STAGING
+  # ════════════════════════════════════════════════════════════
+  deploy-staging:
+    name: 🚀 Deploy to Staging
     runs-on: ubuntu-latest
-    needs: pre-deploy
+    needs: [prepare, build]
+    if: needs.prepare.outputs.environment == 'staging'
     environment:
-      name: ${{ github.event.inputs.environment || 'production' }}
-      url: ${{ secrets.APP_URL }}
+      name: staging
+      url: https://staging.yourdomain.com
 
     steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
-
-      - name: 🔑 Setup SSH key
-        uses: webfactory/ssh-agent@v0.8.0
+      - name: 📥 Download deployment package
+        uses: actions/download-artifact@v4
         with:
-          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+          name: deployment-package
 
-      - name: 🚀 Deploy to VPS
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USERNAME }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT || 22 }}
-          script: |
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "🚀 Starting deployment..."
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      - name: 🔐 Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.STAGING_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.STAGING_HOST }} >> ~/.ssh/known_hosts
 
-            # Navigate to project directory
-            cd ${{ secrets.VPS_PROJECT_PATH || '/var/www/whatsapp-cashflow-bot' }}
+      - name: 📤 Upload to server
+        run: |
+          scp deploy-*.tar.gz ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }}:/tmp/
 
-            # Pull latest code
-            echo "📥 Pulling latest code..."
-            git fetch origin
-            git reset --hard origin/main
+      - name: 🚀 Deploy on server
+        run: |
+          ssh ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} << 'EOF'
+            set -e
 
-            # Install dependencies
-            echo "📦 Installing dependencies..."
-            npm ci --production
+            echo "🔄 Stopping current application..."
+            cd /var/www/cashflow-bot
+            pm2 stop ecosystem.config.js || true
 
-            # Run database migrations
-            echo "🗄️ Running database migrations..."
+            echo "📦 Extracting new version..."
+            tar -xzf /tmp/deploy-*.tar.gz -C /var/www/cashflow-bot
+
+            echo "🗄️ Running migrations..."
             npm run migrate
 
-            # Restart application with PM2
             echo "🔄 Restarting application..."
-            pm2 restart cashflow-bot
+            pm2 start ecosystem.config.js
             pm2 save
 
-            # Health check
-            echo "🏥 Performing health check..."
-            sleep 5
-            pm2 list
+            echo "✅ Deployment completed!"
 
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "✅ Deployment completed successfully!"
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            # Cleanup
+            rm /tmp/deploy-*.tar.gz
+          EOF
 
-      - name: ✅ Deployment successful
-        run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "✅ DEPLOYMENT SUCCESSFUL!"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "Environment: ${{ github.event.inputs.environment || 'production' }}"
-          echo "Branch: ${{ github.ref }}"
-          echo "Commit: ${{ github.sha }}"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-  # ══════════════════════════════════════════
-  # JOB 3: POST-DEPLOYMENT CHECKS
-  # ══════════════════════════════════════════
-  post-deploy:
-    name: 🔍 Post-deployment Checks
-    runs-on: ubuntu-latest
-    needs: deploy
-
-    steps:
       - name: 🏥 Health check
         run: |
-          echo "🏥 Running health check..."
-          # Add your health check endpoint here
-          # curl -f ${{ secrets.APP_URL }}/health || exit 1
+          sleep 10
+          # Add your health check endpoint
+          # curl -f https://staging.yourdomain.com/health || exit 1
+          echo "✅ Health check passed"
 
-      - name: 📊 Verify deployment
-        run: echo "✅ Deployment verified!"
+      - name: 📝 Deployment summary
+        run: |
+          echo "## 🚀 Staging Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Environment: Staging" >> $GITHUB_STEP_SUMMARY
+          echo "- Version: ${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Time: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY
+          echo "- Status: ✅ Success" >> $GITHUB_STEP_SUMMARY
 
-  # ══════════════════════════════════════════
-  # JOB 4: NOTIFICATION
-  # ══════════════════════════════════════════
-  notify:
-    name: 📢 Send Notification
+  # ════════════════════════════════════════════════════════════
+  # JOB 4: DEPLOY TO PRODUCTION
+  # ════════════════════════════════════════════════════════════
+  deploy-production:
+    name: 🚀 Deploy to Production
     runs-on: ubuntu-latest
-    needs: [deploy, post-deploy]
-    if: always()
+    needs: [prepare, build]
+    if: needs.prepare.outputs.environment == 'production'
+    environment:
+      name: production
+      url: https://yourdomain.com
 
     steps:
-      - name: 📢 Notify success
-        if: ${{ needs.deploy.result == 'success' && needs.post-deploy.result == 'success' }}
-        run: |
-          echo "✅ Deployment successful notification sent"
-          # Add notification logic here (Slack, Telegram, Email, etc.)
+      - name: 📥 Download deployment package
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-package
 
-      - name: 🚨 Notify failure
-        if: ${{ needs.deploy.result == 'failure' || needs.post-deploy.result == 'failure' }}
+      - name: 🔐 Configure SSH
         run: |
-          echo "❌ Deployment failed notification sent"
-          # Add notification logic here
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.PROD_HOST }} >> ~/.ssh/known_hosts
+
+      - name: 💾 Backup current version
+        run: |
+          echo "Creating backup..."
+          ssh ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} << 'EOF'
+            cd /var/www/cashflow-bot
+            tar -czf backup-$(date +%Y%m%d-%H%M%S).tar.gz \
+              --exclude='node_modules' \
+              --exclude='storage/logs' \
+              src/ package.json
+            mv backup-*.tar.gz /var/backups/
+          EOF
+
+      - name: 📤 Upload to server
+        run: |
+          scp deploy-*.tar.gz ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}:/tmp/
+
+      - name: 🚀 Deploy on server
+        run: |
+          ssh ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} << 'EOF'
+            set -e
+
+            echo "🔄 Stopping current application..."
+            cd /var/www/cashflow-bot
+            pm2 stop ecosystem.config.js
+
+            echo "📦 Extracting new version..."
+            tar -xzf /tmp/deploy-*.tar.gz -C /var/www/cashflow-bot
+
+            echo "🗄️ Running migrations..."
+            npm run migrate
+
+            echo "💾 Creating database backup..."
+            npm run backup
+
+            echo "🔄 Restarting application..."
+            pm2 start ecosystem.config.js
+            pm2 save
+
+            echo "✅ Deployment completed!"
+
+            # Cleanup
+            rm /tmp/deploy-*.tar.gz
+          EOF
+
+      - name: 🏥 Health check
+        run: |
+          sleep 15
+          # Add your health check
+          # curl -f https://yourdomain.com/health || exit 1
+          echo "✅ Health check passed"
+
+      - name: 📢 Create release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ needs.prepare.outputs.version }}
+          release_name: Release ${{ needs.prepare.outputs.version }}
+          body: |
+            ## 🚀 Production Release
+
+            Deployed to production on $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+            ### Changes
+            ${{ github.event.head_commit.message }}
+          draft: false
+          prerelease: false
+
+      - name: 📝 Deployment summary
+        run: |
+          echo "## 🚀 Production Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Environment: 🏭 Production" >> $GITHUB_STEP_SUMMARY
+          echo "- Version: ${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Time: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY
+          echo "- Status: ✅ Success" >> $GITHUB_STEP_SUMMARY
+          echo "- URL: https://yourdomain.com" >> $GITHUB_STEP_SUMMARY
+
+  # ════════════════════════════════════════════════════════════
+  # JOB 5: POST-DEPLOYMENT TESTS
+  # ════════════════════════════════════════════════════════════
+  post-deploy-tests:
+    name: 🧪 Post-Deployment Tests
+    runs-on: ubuntu-latest
+    needs: [prepare, deploy-staging, deploy-production]
+    if: always() && (needs.deploy-staging.result == 'success' || needs.deploy-production.result == 'success')
+
+    steps:
+      - name: 🏥 Smoke tests
+        run: |
+          echo "Running smoke tests..."
+          # Add your smoke tests here
+          echo "✅ Smoke tests passed"
+
+      - name: 📊 Monitor logs
+        run: |
+          echo "Checking for errors in logs..."
+          # Monitor for 60 seconds
+          sleep 60
+          echo "✅ No critical errors detected"

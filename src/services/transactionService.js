@@ -56,32 +56,51 @@ class TransactionService {
         throw new Error(validation.errors.join(', '));
       }
 
-      // 4. Generate transaction ID
-      const transactionId = await this._generateTransactionId();
+      // 4-6. Generate ID and Create (with retry for concurrency)
+      let transaction;
+      let transactionId;
+      let status;
+      let retries = 3;
 
-      // 5. Determine status (auto-approve or pending)
-      const shouldAutoApprove = this.shouldAutoApprove(amount);
-      const status = shouldAutoApprove ? TRANSACTION_STATUS.APPROVED : TRANSACTION_STATUS.PENDING;
+      while (retries > 0) {
+        try {
+          transactionId = await this._generateTransactionId();
 
-      // 6. Create transaction
-      const transactionData = {
-        transaction_id: transactionId,
-        user_id: userId,
-        type,
-        category: this._getCategoryFromType(type),
-        amount,
-        description,
-        customer_name: metadata.customer_name || null,
-        image_url: metadata.image_url || null,
-        status,
-        approved_by: shouldAutoApprove ? userId : null,
-        approved_at: shouldAutoApprove ? new Date() : null,
-        transaction_date: new Date(),
-        created_at: new Date(),
-        metadata: metadata,
-      };
+          const shouldAutoApprove = this.shouldAutoApprove(amount);
+          status = shouldAutoApprove ? TRANSACTION_STATUS.APPROVED : TRANSACTION_STATUS.PENDING;
 
-      const transaction = await transactionRepository.create(transactionData);
+          const transactionData = {
+            transaction_id: transactionId,
+            user_id: userId,
+            type,
+            category: this._getCategoryFromType(type),
+            amount,
+            description,
+            customer_name: metadata.customer_name || null,
+            image_url: metadata.image_url || null,
+            status,
+            approved_by: shouldAutoApprove ? userId : null,
+            approved_at: shouldAutoApprove ? new Date() : null,
+            transaction_date: new Date(),
+            created_at: new Date(),
+            metadata: metadata,
+          };
+
+          transaction = await transactionRepository.create(transactionData);
+          break; // Success
+        } catch (error) {
+          if (
+            error.message.includes('UNIQUE constraint failed') ||
+            error.message.includes('unique constraint')
+          ) {
+            retries--;
+            if (retries === 0) throw error;
+            await new Promise((r) => setTimeout(r, 100)); // Wait before retry
+          } else {
+            throw error;
+          }
+        }
+      }
 
       // 7. Log activity
       await auditRepository.log(userId, 'create_transaction', 'transaction', transaction.id, {
@@ -101,6 +120,7 @@ class TransactionService {
 
       return transaction;
     } catch (error) {
+      // Note: transactionId/status might be undefined here if error occurred before assignment
       logger.error('Error creating transaction', {
         userId,
         type,
