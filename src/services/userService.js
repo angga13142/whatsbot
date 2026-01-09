@@ -14,9 +14,22 @@ const userRepository = require('../database/repositories/userRepository');
 const auditRepository = require('../database/repositories/auditRepository');
 const logger = require('../utils/logger');
 const validator = require('../utils/validator');
-const { formatPhoneNumber } = require('../utils/formatter');
-const { ROLES, USER_STATUS, ERROR_MESSAGES } = require('../utils/constants');
 const bcrypt = require('bcrypt');
+
+// Constants
+const ROLES = {
+  SUPERADMIN: 'superadmin',
+  ADMIN: 'admin',
+  KARYAWAN: 'karyawan',
+  INVESTOR: 'investor',
+  CUSTOMER: 'customer',
+};
+
+const USER_STATUS = {
+  ACTIVE: 'active',
+  SUSPENDED: 'suspended',
+  DELETED: 'deleted',
+};
 
 class UserService {
   /**

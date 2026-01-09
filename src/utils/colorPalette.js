@@ -1,153 +1,168 @@
 /**
  * Color Palette Utility
  *
- * Color schemes and themes for charts
+ * Color schemes and palette generation
  */
 
-const PALETTES = {
-  // Main palette for income/expense
-  primary: {
-    income: '#22c55e', // Green
-    expense: '#ef4444', // Red
-    net: '#3b82f6', // Blue
-    neutral: '#6b7280', // Gray
-  },
+const chartConfig = require('../config/chartConfig');
 
-  // Category colors (12 distinct colors)
-  categories: [
-    '#3b82f6', // Blue
-    '#22c55e', // Green
-    '#f59e0b', // Amber
-    '#ef4444', // Red
-    '#8b5cf6', // Purple
-    '#06b6d4', // Cyan
-    '#f97316', // Orange
-    '#ec4899', // Pink
-    '#84cc16', // Lime
-    '#14b8a6', // Teal
-    '#6366f1', // Indigo
-    '#a855f7', // Violet
-  ],
+/**
+ * Get color by type
+ * @param {string} type - Color type (income, expense, net)
+ * @returns {string} Hex color
+ */
+function getColorByType(type) {
+  return chartConfig.colors.primary[type] || chartConfig.colors.primary.neutral;
+}
 
-  // Gradient pairs for backgrounds
-  gradients: {
-    blue: ['#3b82f6', '#1d4ed8'],
-    green: ['#22c55e', '#16a34a'],
-    red: ['#ef4444', '#dc2626'],
-    purple: ['#8b5cf6', '#7c3aed'],
-    orange: ['#f97316', '#ea580c'],
-  },
+/**
+ * Get chart colors array
+ * @param {number} count - Number of colors needed
+ * @returns {Array<string>}
+ */
+function getChartColors(count) {
+  const colors = chartConfig.colors.chart;
 
-  // Dark theme
-  dark: {
-    background: '#1f2937',
-    text: '#f9fafb',
-    grid: 'rgba(255, 255, 255, 0.1)',
-    border: '#374151',
-  },
+  if (count <= colors.length) {
+    return colors.slice(0, count);
+  }
 
-  // Light theme
-  light: {
-    background: '#ffffff',
-    text: '#111827',
-    grid: 'rgba(0, 0, 0, 0.1)',
-    border: '#e5e7eb',
-  },
-};
+  // Generate more colors if needed
+  const result = [...colors];
+  while (result.length < count) {
+    result.push(generateRandomColor());
+  }
+
+  return result;
+}
+
+/**
+ * Get gradient colors
+ * @param {string} type - Gradient type
+ * @returns {Array<string>}
+ */
+function getGradientColors(type) {
+  return chartConfig.colors.gradient[type] || chartConfig.colors.gradient.neutral;
+}
+
+/**
+ * Generate random color
+ * @returns {string} Hex color
+ */
+function generateRandomColor() {
+  const letters = '0123456789ABCDEF';
+  let color = '#';
+  for (let i = 0; i < 6; i++) {
+    color += letters[Math.floor(Math.random() * 16)];
+  }
+  return color;
+}
+
+/**
+ * Adjust color brightness
+ * @param {string} color - Hex color
+ * @param {number} percent - Brightness adjustment (-100 to 100)
+ * @returns {string} Adjusted hex color
+ */
+function adjustBrightness(color, percent) {
+  const num = parseInt(color.replace('#', ''), 16);
+  const amt = Math.round(2.55 * percent);
+  const R = (num >> 16) + amt;
+  const G = ((num >> 8) & 0x00ff) + amt;
+  const B = (num & 0x0000ff) + amt;
+
+  return (
+    '#' +
+    (
+      0x1000000 +
+      (R < 255 ? (R < 1 ? 0 : R) : 255) * 0x10000 +
+      (G < 255 ? (G < 1 ? 0 : G) : 255) * 0x100 +
+      (B < 255 ? (B < 1 ? 0 : B) : 255)
+    )
+      .toString(16)
+      .slice(1)
+  );
+}
+
+/**
+ * Add transparency to color
+ * @param {string} color - Hex color
+ * @param {number} alpha - Alpha value (0-1)
+ * @returns {string} RGBA color
+ */
+function addTransparency(color, alpha) {
+  const r = parseInt(color.slice(1, 3), 16);
+  const g = parseInt(color.slice(3, 5), 16);
+  const b = parseInt(color.slice(5, 7), 16);
+
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/**
+ * Get semantic colors based on value
+ * @param {number} value - Numeric value
+ * @param {Object} thresholds - Threshold values
+ * @returns {string} Color
+ */
+function getSemanticColor(value, thresholds = {}) {
+  const { good = 0, warning = -1000000, critical = -5000000 } = thresholds;
+
+  if (value >= good) {
+    return chartConfig.colors.primary.income;
+  } else if (value >= warning) {
+    return chartConfig.colors.chart[2]; // Amber
+  } else if (value >= critical) {
+    return chartConfig.colors.chart[6]; // Orange
+  } else {
+    return chartConfig.colors.primary.expense;
+  }
+}
+
+/**
+ * Create gradient definition for canvas
+ * @param {Object} ctx - Canvas context
+ * @param {Array} colors - Color array
+ * @param {string} direction - Gradient direction (vertical, horizontal)
+ * @returns {CanvasGradient}
+ */
+function createCanvasGradient(ctx, colors, direction = 'vertical') {
+  const gradient =
+    direction === 'vertical'
+      ? ctx.createLinearGradient(0, 0, 0, 400)
+      : ctx.createLinearGradient(0, 0, 400, 0);
+
+  colors.forEach((color, index) => {
+    gradient.addColorStop(index / (colors.length - 1), color);
+  });
+
+  return gradient;
+}
+
+/**
+ * Get contrasting text color
+ * @param {string} backgroundColor - Background hex color
+ * @returns {string} Text color (black or white)
+ */
+function getContrastingTextColor(backgroundColor) {
+  const color = backgroundColor.replace('#', '');
+  const r = parseInt(color.substr(0, 2), 16);
+  const g = parseInt(color.substr(2, 2), 16);
+  const b = parseInt(color.substr(4, 2), 16);
+
+  // Calculate luminance
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+
+  return luminance > 0.5 ? '#000000' : '#FFFFFF';
+}
 
 module.exports = {
-  /**
-   * Get primary colors
-   */
-  getPrimary() {
-    return PALETTES.primary;
-  },
-
-  /**
-   * Get category color by index
-   */
-  getCategoryColor(index) {
-    return PALETTES.categories[index % PALETTES.categories.length];
-  },
-
-  /**
-   * Get array of category colors
-   */
-  getCategoryColors(count = 12) {
-    return PALETTES.categories.slice(0, count);
-  },
-
-  /**
-   * Get gradient colors
-   */
-  getGradient(name) {
-    return PALETTES.gradients[name] || PALETTES.gradients.blue;
-  },
-
-  /**
-   * Get theme colors
-   */
-  getTheme(theme = 'light') {
-    return PALETTES[theme] || PALETTES.light;
-  },
-
-  /**
-   * Create transparent version of color
-   */
-  withAlpha(hex, alpha) {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  },
-
-  /**
-   * Get colors for income/expense chart
-   */
-  getIncomeExpenseColors() {
-    return {
-      income: PALETTES.primary.income,
-      incomeLight: this.withAlpha(PALETTES.primary.income, 0.2),
-      expense: PALETTES.primary.expense,
-      expenseLight: this.withAlpha(PALETTES.primary.expense, 0.2),
-      net: PALETTES.primary.net,
-      netLight: this.withAlpha(PALETTES.primary.net, 0.2),
-    };
-  },
-
-  /**
-   * Get colors for trend chart
-   */
-  getTrendColors() {
-    return {
-      positive: PALETTES.primary.income,
-      negative: PALETTES.primary.expense,
-      neutral: PALETTES.primary.neutral,
-      line: PALETTES.primary.net,
-      fill: this.withAlpha(PALETTES.primary.blue, 0.1),
-    };
-  },
-
-  /**
-   * Generate color scale (for heat maps)
-   */
-  getColorScale(value, min = 0, max = 100) {
-    const ratio = Math.max(0, Math.min(1, (value - min) / (max - min)));
-
-    if (ratio < 0.5) {
-      // Red to Yellow
-      const r = 239;
-      const g = Math.round(68 + ratio * 2 * (234 - 68));
-      const b = 68;
-      return `rgb(${r}, ${g}, ${b})`;
-    } else {
-      // Yellow to Green
-      const r = Math.round(234 - (ratio - 0.5) * 2 * (234 - 34));
-      const g = Math.round(197 + (ratio - 0.5) * 2 * (197 - 197));
-      const b = 34;
-      return `rgb(${r}, ${g}, ${b})`;
-    }
-  },
-
-  PALETTES,
+  getColorByType,
+  getChartColors,
+  getGradientColors,
+  generateRandomColor,
+  adjustBrightness,
+  addTransparency,
+  getSemanticColor,
+  createCanvasGradient,
+  getContrastingTextColor,
 };

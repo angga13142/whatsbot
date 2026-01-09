@@ -18,6 +18,8 @@ const dbConnection = require('./database/connection');
 const whatsappClient = require('./bot/client');
 const dailyReportScheduler = require('./schedulers/dailyReportScheduler');
 const backupScheduler = require('./schedulers/backupScheduler');
+const reportScheduler = require('./schedulers/reportScheduler');
+const cleanupScheduler = require('./schedulers/cleanupScheduler');
 
 /**
  * Display startup banner
@@ -121,6 +123,11 @@ function initializeSchedulers() {
     dailyReportScheduler.start();
     console.log(chalk.green(`   ✅ Daily report:  ${config.business.dailyReportTime}`));
 
+    // Start general    // Start schedulers
+    reportScheduler.start();
+    cleanupScheduler.start();
+    console.log(chalk.green('   ✅ Report Scheduler: Active'));
+
     // Start backup scheduler (if enabled)
     if (config.backup.enabled) {
       backupScheduler.start();
@@ -152,6 +159,7 @@ function setupGracefulShutdown() {
       // Stop schedulers
       console.log(chalk.cyan('⏰ Stopping schedulers... '));
       dailyReportScheduler.stop();
+      reportScheduler.stop();
       backupScheduler.stop();
       console.log(chalk.green('✅ Schedulers stopped\n'));
 

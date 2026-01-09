@@ -1,220 +1,258 @@
 /**
  * Chart Builder Utility
  *
- * Build Chart.js configurations
+ * Build chart configurations
  */
 
 const chartConfig = require('../config/chartConfig');
-const colorPalette = require('./colorPalette');
+const { getColorByType, getChartColors, addTransparency } = require('./colorPalette');
 const { formatCurrency } = require('./formatter');
 
-module.exports = {
-  /**
-   * Build bar chart configuration
-   */
-  buildBarChart(data, options = {}) {
-    const colors = colorPalette.getIncomeExpenseColors();
-    const theme = colorPalette.getTheme(options.theme);
+class ChartBuilder {
+  constructor() {
+    this.config = {};
+  }
 
-    return {
+  /**
+   * Create bar chart configuration
+   * @param {Object} data - Chart data
+   * @param {Object} options - Chart options
+   * @returns {Object} Chart. js config
+   */
+  createBarChart(data, options = {}) {
+    const { labels, datasets, title, horizontal = false } = data;
+
+    const config = {
       type: 'bar',
       data: {
-        labels: data.labels,
-        datasets: data.datasets.map((ds, i) => ({
-          label: ds.label,
-          data: ds.data,
-          backgroundColor: ds.color || colorPalette.getCategoryColor(i),
-          borderRadius: chartConfig.chartDefaults.bar.borderRadius,
-          ...chartConfig.chartDefaults.bar,
+        labels,
+        datasets: datasets.map((dataset, index) => ({
+          label: dataset.label,
+          data: dataset.data,
+          backgroundColor: dataset.color || getChartColors(datasets.length)[index],
+          borderColor: dataset.borderColor || dataset.color,
+          borderWidth: 2,
+          borderRadius: 8,
+          ...dataset,
         })),
       },
-      options: this._getCommonOptions(options, theme),
+      options: {
+        ...chartConfig.defaults.bar,
+        indexAxis: horizontal ? 'y' : 'x',
+        plugins: {
+          ...chartConfig.defaults.bar.plugins,
+          title: {
+            display: !!title,
+            text: title,
+            font: {
+              size: chartConfig.fonts.sizes.title,
+              weight: 'bold',
+            },
+            padding: 20,
+          },
+        },
+        ...options,
+      },
     };
-  },
+
+    return config;
+  }
 
   /**
-   * Build line chart configuration
+   * Create line chart configuration
+   * @param {Object} data - Chart data
+   * @param {Object} options - Chart options
+   * @returns {Object} Chart.js config
    */
-  buildLineChart(data, options = {}) {
-    const colors = colorPalette.getIncomeExpenseColors();
-    const theme = colorPalette.getTheme(options.theme);
+  createLineChart(data, options = {}) {
+    const { labels, datasets, title } = data;
 
-    return {
+    const config = {
       type: 'line',
       data: {
-        labels: data.labels,
-        datasets: data.datasets.map((ds, i) => ({
-          label: ds.label,
-          data: ds.data,
-          borderColor: ds.color || colorPalette.getCategoryColor(i),
-          backgroundColor: colorPalette.withAlpha(
-            ds.color || colorPalette.getCategoryColor(i),
+        labels,
+        datasets: datasets.map((dataset, index) => ({
+          label: dataset.label,
+          data: dataset.data,
+          borderColor: dataset.color || getChartColors(datasets.length)[index],
+          backgroundColor: addTransparency(
+            dataset.color || getChartColors(datasets.length)[index],
             0.1
           ),
-          ...chartConfig.chartDefaults.line,
-          fill: options.fill !== false,
+          fill: dataset.fill !== false,
+          tension: dataset.tension || 0.4,
+          ...dataset,
         })),
       },
-      options: this._getCommonOptions(options, theme),
+      options: {
+        ...chartConfig.defaults.line,
+        plugins: {
+          ...chartConfig.defaults.line.plugins,
+          title: {
+            display: !!title,
+            text: title,
+            font: {
+              size: chartConfig.fonts.sizes.title,
+              weight: 'bold',
+            },
+          },
+        },
+        ...options,
+      },
     };
-  },
+
+    return config;
+  }
 
   /**
-   * Build pie chart configuration
+   * Create pie chart configuration
+   * @param {Object} data - Chart data
+   * @param {Object} options - Chart options
+   * @returns {Object} Chart.js config
    */
-  buildPieChart(data, options = {}) {
-    const theme = colorPalette.getTheme(options.theme);
-    const categoryColors = colorPalette.getCategoryColors(data.labels.length);
+  createPieChart(data, options = {}) {
+    const { labels, values, title, colors } = data;
 
-    return {
+    const config = {
       type: 'pie',
       data: {
-        labels: data.labels,
+        labels,
         datasets: [
           {
-            data: data.values,
-            backgroundColor: categoryColors,
-            ...chartConfig.chartDefaults.pie,
+            data: values,
+            backgroundColor: colors || getChartColors(labels.length),
+            borderColor: '#FFFFFF',
+            borderWidth: 2,
           },
         ],
       },
       options: {
-        ...this._getCommonOptions(options, theme),
+        ...chartConfig.defaults.pie,
         plugins: {
-          ...this._getCommonOptions(options, theme).plugins,
-          legend: {
-            position: 'right',
-            labels: {
-              font: { size: chartConfig.fonts.legendSize },
-              color: theme.text,
-              padding: 15,
-              usePointStyle: true,
+          ...chartConfig.defaults.pie.plugins,
+          title: {
+            display: !!title,
+            text: title,
+            font: {
+              size: chartConfig.fonts.sizes.title,
+              weight: 'bold',
             },
           },
         },
+        ...options,
       },
     };
-  },
 
-  /**
-   * Build doughnut chart configuration
-   */
-  buildDoughnutChart(data, options = {}) {
-    const config = this.buildPieChart(data, options);
-    config.type = 'doughnut';
-    config.data.datasets[0] = {
-      ...config.data.datasets[0],
-      ...chartConfig.chartDefaults.doughnut,
-    };
     return config;
-  },
+  }
 
   /**
-   * Build income vs expense bar chart
+   * Create doughnut chart configuration
+   * @param {Object} data - Chart data
+   * @param {Object} options - Chart options
+   * @returns {Object} Chart.js config
    */
-  buildIncomeExpenseChart(income, expense, labels, options = {}) {
-    const colors = colorPalette.getIncomeExpenseColors();
-
-    return this.buildBarChart(
-      {
-        labels,
-        datasets: [
-          { label: 'Pemasukan', data: income, color: colors.income },
-          { label: 'Pengeluaran', data: expense, color: colors.expense },
-        ],
-      },
-      { ...options, title: options.title || 'Pemasukan vs Pengeluaran' }
-    );
-  },
-
-  /**
-   * Build trend line chart
-   */
-  buildTrendChart(trendData, options = {}) {
-    const colors = colorPalette.getIncomeExpenseColors();
-    const netData = trendData.map((d) => d.income - d.expense);
-
-    return this.buildLineChart(
-      {
-        labels: trendData.map((d) => d.period),
-        datasets: [{ label: 'Net Cashflow', data: netData, color: colors.net }],
-      },
-      { ...options, title: options.title || 'Trend Cashflow' }
-    );
-  },
-
-  /**
-   * Build category breakdown chart
-   */
-  buildCategoryChart(categoryData, options = {}) {
-    const sorted = [...categoryData].sort((a, b) => b.total - a.total);
-    const top = sorted.slice(0, 8);
-    const others = sorted.slice(8);
-
-    const labels = top.map((c) => c.category_name || c.name || 'Unknown');
-    const values = top.map((c) => parseFloat(c.total));
-
-    if (others.length > 0) {
-      labels.push('Lainnya');
-      values.push(others.reduce((sum, c) => sum + parseFloat(c.total), 0));
-    }
-
-    return this.buildDoughnutChart({ labels, values }, options);
-  },
-
-  /**
-   * Get common chart options
-   */
-  _getCommonOptions(options, theme) {
-    return {
-      responsive: false,
-      maintainAspectRatio: false,
-      animation: chartConfig.animation,
-      plugins: {
-        title: {
-          display: !!options.title,
-          text: options.title || '',
-          font: { size: chartConfig.fonts.titleSize, weight: 'bold' },
-          color: theme.text,
-          padding: { bottom: 20 },
-        },
-        legend: {
-          display: options.showLegend !== false,
-          position: chartConfig.legend.position,
-          labels: {
-            font: { size: chartConfig.fonts.legendSize },
-            color: theme.text,
-            usePointStyle: true,
-            padding: 15,
-          },
-        },
-        tooltip: {
-          ...chartConfig.tooltip,
-          callbacks: {
-            label: (context) => {
-              const value = context.parsed.y ?? context.parsed;
-              return `${context.dataset.label || ''}: ${formatCurrency(value)}`;
-            },
-          },
-        },
-      },
-      scales:
-        options.showScales !== false
-          ? {
-              x: {
-                grid: { display: false },
-                ticks: { color: theme.text, font: { size: chartConfig.fonts.tickSize } },
-              },
-              y: {
-                grid: { ...chartConfig.grid },
-                ticks: {
-                  color: theme.text,
-                  font: { size: chartConfig.fonts.tickSize },
-                  callback: (value) => formatCurrency(value, { compact: true }),
-                },
-              },
-            }
-          : undefined,
+  createDoughnutChart(data, options = {}) {
+    const config = this.createPieChart(data, options);
+    config.type = 'doughnut';
+    config.options = {
+      ...config.options,
+      ...chartConfig.defaults.doughnut,
     };
-  },
-};
+
+    return config;
+  }
+
+  /**
+   * Create income vs expense bar chart
+   * @param {Object} data - Data with income and expense
+   * @returns {Object} Chart config
+   */
+  createIncomeExpenseChart(data) {
+    return this.createBarChart({
+      labels: data.labels || ['Pemasukan', 'Pengeluaran'],
+      datasets: [
+        {
+          label: 'Jumlah',
+          data: [data.income, data.expense],
+          backgroundColor: [getColorByType('income'), getColorByType('expense')],
+        },
+      ],
+      title: data.title || 'Pemasukan vs Pengeluaran',
+    });
+  }
+
+  /**
+   * Create trend line chart
+   * @param {Object} trendData - Trend data array
+   * @returns {Object} Chart config
+   */
+  createTrendChart(trendData) {
+    const labels = trendData.map((d) => d.period);
+    const incomeData = trendData.map((d) => parseFloat(d.income || 0));
+    const expenseData = trendData.map((d) => parseFloat(d.expense || 0));
+
+    return this.createLineChart({
+      labels,
+      datasets: [
+        {
+          label: 'Pemasukan',
+          data: incomeData,
+          color: getColorByType('income'),
+          fill: false,
+        },
+        {
+          label: 'Pengeluaran',
+          data: expenseData,
+          color: getColorByType('expense'),
+          fill: false,
+        },
+      ],
+      title: 'Trend Pemasukan & Pengeluaran',
+    });
+  }
+
+  /**
+   * Create category breakdown pie chart
+   * @param {Array} categoryData - Category grouped data
+   * @returns {Object} Chart config
+   */
+  createCategoryPieChart(categoryData) {
+    const labels = categoryData.map((c) => c.category_name || 'Uncategorized');
+    const values = categoryData.map((c) => parseFloat(c.total));
+
+    return this.createPieChart({
+      labels,
+      values,
+      title: 'Breakdown by Category',
+    });
+  }
+
+  /**
+   * Create comparison bar chart
+   * @param {Object} current - Current period data
+   * @param {Object} previous - Previous period data
+   * @param {Array} labels - Period labels
+   * @returns {Object} Chart config
+   */
+  createComparisonChart(current, previous, labels) {
+    return this.createBarChart({
+      labels: labels || ['Current', 'Previous'],
+      datasets: [
+        {
+          label: 'Pemasukan',
+          data: [current.total_income, previous.total_income],
+          backgroundColor: getColorByType('income'),
+        },
+        {
+          label: 'Pengeluaran',
+          data: [current.total_expense, previous.total_expense],
+          backgroundColor: getColorByType('expense'),
+        },
+      ],
+      title: 'Period Comparison',
+    });
+  }
+}
+
+module.exports = new ChartBuilder();

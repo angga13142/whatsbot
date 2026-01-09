@@ -29,6 +29,9 @@ const createAdminCommand = require('./superadmin/createAdminCommand');
 const usersCommand = require('./superadmin/usersCommand');
 const logsCommand = require('./superadmin/logsCommand');
 
+// Customer commands
+const customerCommand = require('./customer/customerCommand');
+
 /**
  * Command definitions by role
  * Each command has:  name, description, usage, handler, permission
@@ -86,6 +89,42 @@ const commands = {
       description: 'Melihat riwayat transaksi',
       usage: '/history [jumlah hari]',
       handler: historyCommand.handler,
+      permission: null,
+    },
+  ],
+
+  // Customer self-service commands
+  customer: [
+    {
+      name: 'balance',
+      aliases: [],
+      description: 'Check customer balance and credit status',
+      usage: '/balance',
+      handler: customerCommand.handler,
+      permission: null,
+    },
+    {
+      name: 'history',
+      aliases: [],
+      description: 'View customer transaction history',
+      usage: '/history [days]',
+      handler: customerCommand.handler,
+      permission: null,
+    },
+    {
+      name: 'invoice',
+      aliases: [],
+      description: 'View customer invoices',
+      usage: '/invoice [invoice-number]',
+      handler: customerCommand.handler,
+      permission: null,
+    },
+    {
+      name: 'pay',
+      aliases: [],
+      description: 'Get payment instructions for invoice',
+      usage: '/pay [invoice-number]',
+      handler: customerCommand.handler,
       permission: null,
     },
   ],
@@ -223,6 +262,9 @@ module.exports = {
   getAllCommands(userRole) {
     const availableCommands = [...commands.common];
 
+    // Add customer commands for all roles
+    availableCommands.push(...commands.customer);
+
     // Add role-specific commands
     const roleCommands = this._getCommandsForRole(userRole);
     availableCommands.push(...roleCommands);
@@ -267,6 +309,7 @@ module.exports = {
 
     const allCommands = [
       ...commands.common,
+      ...commands.customer,
       ...commands.karyawan,
       ...commands.admin,
       ...commands.superadmin,

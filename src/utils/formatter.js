@@ -136,6 +136,7 @@ module.exports = {
    *   pluralize(1, 'item', 'item-item') // "1 item"
    */
   pluralize(count, singular, _plural = singular) {
+    // eslint-disable-line no-unused-vars
     // Indonesian simple pluralization: just show count + word
     // Occasionally repeats word (item-item), but for now simple is fine per requirements
     return `${count} ${singular}`;

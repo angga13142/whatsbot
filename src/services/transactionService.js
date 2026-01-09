@@ -15,7 +15,7 @@ const userRepository = require('../database/repositories/userRepository');
 const auditRepository = require('../database/repositories/auditRepository');
 const logger = require('../utils/logger');
 const validator = require('../utils/validator');
-const { formatCurrency, formatDate } = require('../utils/formatter');
+const { formatDate } = require('../utils/formatter');
 const { TRANSACTION_TYPES, TRANSACTION_STATUS, ROLES } = require('../utils/constants');
 const config = require('../config/app');
 const dayjs = require('dayjs');
@@ -423,35 +423,18 @@ class TransactionService {
 
   /**
    * Generate unique transaction ID
-   * @returns {Promise<string>} Transaction ID (TRX-YYYYMMDD-NNN)
+   * @returns {Promise<string>} Transaction ID (TRX-YYYYMMDD-XXXXXXXX)
    * @private
+   *
+   * Uses crypto random to avoid race conditions during concurrent operations.
+   * Format: TRX-YYYYMMDD-XXXXXXXX (8 hex characters for uniqueness)
    */
   async _generateTransactionId() {
+    const crypto = require('crypto');
     const today = dayjs().format('YYYYMMDD');
-    const prefix = `TRX-${today}`;
+    const random = crypto.randomBytes(4).toString('hex').toUpperCase();
 
-    // Get today's transactions
-    const startDate = dayjs().startOf('day').toDate();
-    const endDate = dayjs().endOf('day').toDate();
-
-    const todayTransactions = await transactionRepository.findByDateRange(startDate, endDate);
-
-    // Get max sequence number
-    let maxSequence = 0;
-    for (const trx of todayTransactions) {
-      if (trx.transaction_id.startsWith(prefix)) {
-        const parts = trx.transaction_id.split('-');
-        const sequence = parseInt(parts[2]);
-        if (sequence > maxSequence) {
-          maxSequence = sequence;
-        }
-      }
-    }
-
-    const nextSequence = maxSequence + 1;
-    const sequenceStr = nextSequence.toString().padStart(3, '0');
-
-    return `${prefix}-${sequenceStr}`;
+    return `TRX-${today}-${random}`;
   }
 
   /**

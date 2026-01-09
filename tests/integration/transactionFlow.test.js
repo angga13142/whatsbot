@@ -5,9 +5,9 @@
  */
 
 const transactionService = require('../../src/services/transactionService');
-const userService = require('../../src/services/userService');
+// // const userService = require('../../src/services/userService');
 const userRepository = require('../../src/database/repositories/userRepository');
-const transactionRepository = require('../../src/database/repositories/transactionRepository');
+// // const transactionRepository = require('../../src/database/repositories/transactionRepository');
 const auditRepository = require('../../src/database/repositories/auditRepository');
 const knex = require('../../src/database/connection');
 const { generateUserData, cleanTestData } = require('../helpers/testHelpers');

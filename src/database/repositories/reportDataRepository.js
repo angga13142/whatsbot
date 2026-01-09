@@ -166,12 +166,12 @@ module.exports = {
 
     return await query
       .select(
-        knex.raw(`strftime('${dateFormat}', transaction_date) as period`),
+        knex.raw(`strftime('${dateFormat}', transaction_date / 1000, 'unixepoch') as period`),
         knex.raw("SUM(CASE WHEN type IN ('paket', 'utang') THEN amount ELSE 0 END) as income"),
         knex.raw("SUM(CASE WHEN type = 'jajan' THEN amount ELSE 0 END) as expense"),
         knex.raw('COUNT(*) as count')
       )
-      .groupByRaw(`strftime('${dateFormat}', transaction_date)`)
+      .groupByRaw(`strftime('${dateFormat}', transaction_date / 1000, 'unixepoch')`)
       .orderBy('period', 'asc');
   },
 
@@ -250,11 +250,11 @@ module.exports = {
       case 'days':
         return await query
           .select(
-            knex.raw('strftime("%w", transaction_date) as day_of_week'),
+            knex.raw("strftime('%w', transaction_date / 1000, 'unixepoch') as day_of_week"),
             knex.raw('SUM(amount) as total'),
             knex.raw('COUNT(*) as count')
           )
-          .groupByRaw('strftime("%w", transaction_date)')
+          .groupByRaw("strftime('%w', transaction_date / 1000, 'unixepoch')")
           .orderBy('total', 'desc')
           .limit(limit);
 
@@ -352,13 +352,13 @@ module.exports = {
   async _groupByDate(query) {
     return await query
       .select(
-        knex.raw('DATE(transaction_date) as date'),
+        knex.raw("DATE(transaction_date / 1000, 'unixepoch') as date"),
         knex.raw('COUNT(*) as count'),
         knex.raw('SUM(amount) as total'),
         knex.raw("SUM(CASE WHEN type IN ('paket', 'utang') THEN amount ELSE 0 END) as income"),
         knex.raw("SUM(CASE WHEN type = 'jajan' THEN amount ELSE 0 END) as expense")
       )
-      .groupByRaw('DATE(transaction_date)')
+      .groupByRaw("DATE(transaction_date / 1000, 'unixepoch')")
       .orderBy('date', 'desc');
   },
 
@@ -369,13 +369,13 @@ module.exports = {
   async _groupByWeek(query) {
     return await query
       .select(
-        knex.raw("strftime('%Y-W%W', transaction_date) as week"),
+        knex.raw("strftime('%Y-W%W', transaction_date / 1000, 'unixepoch') as week"),
         knex.raw('COUNT(*) as count'),
         knex.raw('SUM(amount) as total'),
         knex.raw("SUM(CASE WHEN type IN ('paket', 'utang') THEN amount ELSE 0 END) as income"),
         knex.raw("SUM(CASE WHEN type = 'jajan' THEN amount ELSE 0 END) as expense")
       )
-      .groupByRaw("strftime('%Y-W%W', transaction_date)")
+      .groupByRaw("strftime('%Y-W%W', transaction_date / 1000, 'unixepoch')")
       .orderBy('week', 'desc');
   },
 
@@ -386,13 +386,13 @@ module.exports = {
   async _groupByMonth(query) {
     return await query
       .select(
-        knex.raw("strftime('%Y-%m', transaction_date) as month"),
+        knex.raw("strftime('%Y-%m', transaction_date / 1000, 'unixepoch') as month"),
         knex.raw('COUNT(*) as count'),
         knex.raw('SUM(amount) as total'),
         knex.raw("SUM(CASE WHEN type IN ('paket', 'utang') THEN amount ELSE 0 END) as income"),
         knex.raw("SUM(CASE WHEN type = 'jajan' THEN amount ELSE 0 END) as expense")
       )
-      .groupByRaw("strftime('%Y-%m', transaction_date)")
+      .groupByRaw("strftime('%Y-%m', transaction_date / 1000, 'unixepoch')")
       .orderBy('month', 'desc');
   },
 
@@ -466,5 +466,37 @@ module.exports = {
       )
       .groupBy('tags.id', 'tags.name', 'tags.color')
       .orderBy('total', 'desc');
+  },
+
+  /**
+   * Get daily transaction summary for forecasting
+   */
+  async getDailyTransactionSummary(startDate, endDate) {
+    const query = knex('transactions')
+      .where({ status: 'approved' })
+      .where('transaction_date', '>=', startDate)
+      .where('transaction_date', '<=', endDate)
+      .select(
+        knex.raw("DATE(transaction_date / 1000, 'unixepoch') as date"),
+        knex.raw("SUM(CASE WHEN type IN ('paket', 'utang') THEN amount ELSE 0 END) as income"),
+        knex.raw("SUM(CASE WHEN type = 'jajan' THEN amount ELSE 0 END) as expense"),
+        knex.raw('SUM(amount) as total_volume'),
+        knex.raw('COUNT(*) as transaction_count')
+      )
+      .groupByRaw("DATE(transaction_date / 1000, 'unixepoch')")
+      .orderBy('date', 'asc');
+
+    return await query;
+  },
+
+  /**
+   * Get all transactions for a specific period (for anomaly detection context)
+   */
+  async getTransactionsForPeriod(startDate, endDate) {
+    return await knex('transactions')
+      .where({ status: 'approved' })
+      .where('transaction_date', '>=', startDate)
+      .where('transaction_date', '<=', endDate)
+      .orderBy('transaction_date', 'asc');
   },
 };

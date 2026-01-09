@@ -1,181 +1,323 @@
 /**
  * Chart Generator Service
  *
- * Generate various chart types as images
+ * Generate various types of charts
  */
 
 const chartBuilder = require('../utils/chartBuilder');
 const imageGenerator = require('../utils/imageGenerator');
 const reportDataRepository = require('../database/repositories/reportDataRepository');
-const dateRangeHelper = require('../utils/dateRangeHelper');
+const { getColorByType } = require('../utils/colorPalette');
 const logger = require('../utils/logger');
+const dayjs = require('dayjs');
 
-module.exports = {
+class ChartGeneratorService {
   /**
    * Generate bar chart
+   * @param {Object} filters - Data filters
+   * @param {Object} options - Chart options
+   * @returns {Promise<string>} Image file path
    */
   async generateBarChart(filters, options = {}) {
     try {
-      const trendData = await reportDataRepository.getTrendData(filters, options.interval || 'day');
+      // Get data
+      const summary = await reportDataRepository.getReportSummary(filters);
 
-      if (trendData.length === 0) {
-        return { error: 'Tidak ada data untuk periode ini' };
-      }
-
-      const income = trendData.map((d) => parseFloat(d.income || 0));
-      const expense = trendData.map((d) => parseFloat(d.expense || 0));
-      const labels = trendData.map((d) => d.period);
-
-      const chartConfig = chartBuilder.buildIncomeExpenseChart(income, expense, labels, {
-        title: options.title || 'Pemasukan vs Pengeluaran',
+      // Build chart config
+      const chartConfig = chartBuilder.createIncomeExpenseChart({
+        income: summary.total_income,
+        expense: summary.total_expense,
+        title: options.title || 'Income vs Expense',
       });
 
-      const filename = imageGenerator.generateFilename('bar-chart');
-      const result = await imageGenerator.renderToFile(chartConfig, filename, 'whatsapp');
+      // Generate image
+      const imagePath = await imageGenerator.generateChartImage(chartConfig, options);
 
-      logger.info('Bar chart generated', { filename });
-      return result;
+      logger.info('Bar chart generated', { filters, imagePath });
+
+      return imagePath;
     } catch (error) {
       logger.error('Error generating bar chart', { error: error.message });
       throw error;
     }
-  },
+  }
 
   /**
    * Generate line chart (trend)
+   * @param {Object} filters - Data filters
+   * @param {Object} options - Chart options
+   * @returns {Promise<string>} Image file path
    */
   async generateLineChart(filters, options = {}) {
     try {
-      const trendData = await reportDataRepository.getTrendData(filters, options.interval || 'day');
+      const interval = options.interval || 'day';
+
+      // Get trend data
+      const trendData = await reportDataRepository.getTrendData(filters, interval);
 
       if (trendData.length === 0) {
-        return { error: 'Tidak ada data untuk periode ini' };
+        throw new Error('No data available for trend chart');
       }
 
-      const chartConfig = chartBuilder.buildTrendChart(trendData, {
-        title: options.title || 'Trend Cashflow',
-      });
+      // Build chart config
+      const chartConfig = chartBuilder.createTrendChart(trendData);
 
-      const filename = imageGenerator.generateFilename('line-chart');
-      const result = await imageGenerator.renderToFile(chartConfig, filename, 'whatsapp');
+      // Generate image
+      const imagePath = await imageGenerator.generateChartImage(chartConfig, options);
 
-      logger.info('Line chart generated', { filename });
-      return result;
+      logger.info('Line chart generated', { filters, imagePath });
+
+      return imagePath;
     } catch (error) {
       logger.error('Error generating line chart', { error: error.message });
       throw error;
     }
-  },
+  }
 
   /**
-   * Generate pie chart (category breakdown)
+   * Generate pie chart
+   * @param {Object} filters - Data filters
+   * @param {string} groupBy - Group by dimension
+   * @param {Object} options - Chart options
+   * @returns {Promise<string>} Image file path
    */
-  async generatePieChart(filters, groupBy = 'category', options = {}) {
+  async generatePieChart(filters, groupBy, options = {}) {
     try {
+      // Get grouped data
       const groupedData = await reportDataRepository.getGroupedData(filters, groupBy);
 
       if (groupedData.length === 0) {
-        return { error: 'Tidak ada data untuk periode ini' };
+        throw new Error('No data available for pie chart');
       }
 
-      const chartConfig = chartBuilder.buildCategoryChart(groupedData, {
-        title: options.title || `Breakdown by ${groupBy}`,
+      // Limit to top 10 + Others
+      const topData = groupedData.slice(0, 10);
+      const othersTotal = groupedData
+        .slice(10)
+        .reduce((sum, item) => sum + parseFloat(item.total), 0);
+
+      if (othersTotal > 0) {
+        topData.push({
+          category_name: 'Others',
+          total: othersTotal,
+          count: groupedData.slice(10).reduce((sum, item) => sum + parseInt(item.count), 0),
+        });
+      }
+
+      // Build chart config
+      const chartConfig = chartBuilder.createCategoryPieChart(topData);
+      chartConfig.options.plugins.title.text = options.title || `Breakdown by ${groupBy}`;
+
+      // Generate image
+      const imagePath = await imageGenerator.generateChartImage(chartConfig, {
+        ...options,
+        width: 1000,
+        height: 1000,
       });
 
-      const filename = imageGenerator.generateFilename('pie-chart');
-      const result = await imageGenerator.renderToFile(chartConfig, filename, 'whatsapp');
+      logger.info('Pie chart generated', { filters, groupBy, imagePath });
 
-      logger.info('Pie chart generated', { filename, groupBy });
-      return result;
+      return imagePath;
     } catch (error) {
       logger.error('Error generating pie chart', { error: error.message });
       throw error;
     }
-  },
+  }
 
   /**
-   * Generate doughnut chart
+   * Generate comparison chart
+   * @param {Object} currentFilters - Current period filters
+   * @param {Object} previousFilters - Previous period filters
+   * @param {Object} options - Chart options
+   * @returns {Promise<string>} Image file path
    */
-  async generateDoughnutChart(filters, groupBy = 'type', options = {}) {
+  async generateComparisonChart(currentFilters, previousFilters, options = {}) {
     try {
-      const groupedData = await reportDataRepository.getGroupedData(filters, groupBy);
+      // Get data for both periods
+      const [currentData, previousData] = await Promise.all([
+        reportDataRepository.getReportSummary(currentFilters),
+        reportDataRepository.getReportSummary(previousFilters),
+      ]);
+
+      // Build chart config
+      const chartConfig = chartBuilder.createComparisonChart(currentData, previousData, [
+        options.currentLabel || 'Current',
+        options.previousLabel || 'Previous',
+      ]);
+
+      // Generate image
+      const imagePath = await imageGenerator.generateChartImage(chartConfig, options);
+
+      logger.info('Comparison chart generated', { imagePath });
+
+      return imagePath;
+    } catch (error) {
+      logger.error('Error generating comparison chart', { error: error.message });
+      throw error;
+    }
+  }
+
+  /**
+   * Generate category breakdown chart
+   * @param {Object} filters - Data filters
+   * @param {Object} options - Chart options
+   * @returns {Promise<string>} Image file path
+   */
+  async generateCategoryChart(filters, options = {}) {
+    try {
+      const groupedData = await reportDataRepository.getGroupedData(filters, 'category');
 
       if (groupedData.length === 0) {
-        return { error: 'Tidak ada data untuk periode ini' };
+        throw new Error('No category data available');
       }
 
-      const chartConfig = chartBuilder.buildCategoryChart(groupedData, {
-        title: options.title || `Distribusi by ${groupBy}`,
+      // Sort by total descending
+      const sorted = groupedData.sort((a, b) => parseFloat(b.total) - parseFloat(a.total));
+
+      // Build horizontal bar chart
+      const labels = sorted.slice(0, 10).map((item) => item.category_name || 'Uncategorized');
+      const data = sorted.slice(0, 10).map((item) => parseFloat(item.total));
+
+      const chartConfig = chartBuilder.createBarChart({
+        labels,
+        datasets: [
+          {
+            label: 'Total Amount',
+            data,
+            backgroundColor: getColorByType('income'),
+          },
+        ],
+        title: options.title || 'Top 10 Categories',
+        horizontal: true,
       });
 
-      // Convert to doughnut
-      chartConfig.type = 'doughnut';
+      // Generate image
+      const imagePath = await imageGenerator.generateChartImage(chartConfig, {
+        ...options,
+        width: 1200,
+        height: 800,
+      });
 
-      const filename = imageGenerator.generateFilename('doughnut-chart');
-      const result = await imageGenerator.renderToFile(chartConfig, filename, 'whatsapp');
+      logger.info('Category chart generated', { imagePath });
 
-      logger.info('Doughnut chart generated', { filename });
-      return result;
+      return imagePath;
     } catch (error) {
-      logger.error('Error generating doughnut chart', { error: error.message });
+      logger.error('Error generating category chart', { error: error.message });
       throw error;
     }
-  },
+  }
 
   /**
-   * Generate chart by preset period
+   * Generate user performance chart
+   * @param {Object} filters - Data filters
+   * @param {Object} options - Chart options
+   * @returns {Promise<string>} Image file path
    */
-  async generateByPreset(chartType, preset, options = {}) {
+  async generateUserPerformanceChart(filters, options = {}) {
     try {
-      const presets = dateRangeHelper.getPresetRanges();
-      const range = presets[preset];
+      const groupedData = await reportDataRepository.getGroupedData(filters, 'user');
 
-      if (!range) {
-        throw new Error(`Invalid preset: ${preset}`);
+      if (groupedData.length === 0) {
+        throw new Error('No user data available');
       }
 
-      const filters = {
-        startDate: range.startDate,
-        endDate: range.endDate,
-      };
+      // Sort by total descending
+      const sorted = groupedData.sort((a, b) => parseFloat(b.total) - parseFloat(a.total));
 
-      switch (chartType) {
-        case 'bar':
-          return await this.generateBarChart(filters, { ...options, title: range.label });
-        case 'line':
-        case 'trend':
-          return await this.generateLineChart(filters, {
-            ...options,
-            title: `Trend - ${range.label}`,
-          });
-        case 'pie':
-          return await this.generatePieChart(filters, 'category', {
-            ...options,
-            title: `Kategori - ${range.label}`,
-          });
-        case 'doughnut':
-          return await this.generateDoughnutChart(filters, 'type', {
-            ...options,
-            title: `Jenis - ${range.label}`,
-          });
-        default:
-          throw new Error(`Unknown chart type: ${chartType}`);
-      }
+      const labels = sorted.map((item) => item.user_name);
+      const data = sorted.map((item) => parseFloat(item.total));
+
+      const chartConfig = chartBuilder.createBarChart({
+        labels,
+        datasets: [
+          {
+            label: 'Total Transactions',
+            data,
+            backgroundColor: getColorByType('net'),
+          },
+        ],
+        title: options.title || 'User Performance',
+        horizontal: true,
+      });
+
+      const imagePath = await imageGenerator.generateChartImage(chartConfig, options);
+
+      logger.info('User performance chart generated', { imagePath });
+
+      return imagePath;
     } catch (error) {
-      logger.error('Error generating chart by preset', { chartType, preset, error: error.message });
+      logger.error('Error generating user performance chart', { error: error.message });
       throw error;
     }
-  },
+  }
 
   /**
-   * Get available chart types
+   * Generate monthly summary chart
+   * @param {number} year - Year
+   * @param {Object} options - Options
+   * @returns {Promise<string>} Image file path
    */
-  getChartTypes() {
-    return [
-      { value: 'bar', label: 'Bar Chart', description: 'Pemasukan vs Pengeluaran' },
-      { value: 'line', label: 'Line Chart', description: 'Trend over time' },
-      { value: 'pie', label: 'Pie Chart', description: 'Category breakdown' },
-      { value: 'doughnut', label: 'Doughnut Chart', description: 'Type distribution' },
-    ];
-  },
-};
+  async generateMonthlySummaryChart(year, options = {}) {
+    try {
+      const monthlyData = [];
+
+      // Get data for each month
+      for (let month = 0; month < 12; month++) {
+        const startDate = dayjs().year(year).month(month).startOf('month').toDate();
+        const endDate = dayjs().year(year).month(month).endOf('month').toDate();
+
+        const summary = await reportDataRepository.getReportSummary({
+          startDate,
+          endDate,
+        });
+
+        monthlyData.push(summary);
+      }
+
+      const months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
+      const incomeData = monthlyData.map((m) => m.total_income);
+      const expenseData = monthlyData.map((m) => m.total_expense);
+
+      const chartConfig = chartBuilder.createLineChart({
+        labels: months,
+        datasets: [
+          {
+            label: 'Income',
+            data: incomeData,
+            color: getColorByType('income'),
+          },
+          {
+            label: 'Expense',
+            data: expenseData,
+            color: getColorByType('expense'),
+          },
+        ],
+        title: `${year} Monthly Summary`,
+      });
+
+      const imagePath = await imageGenerator.generateChartImage(chartConfig, options);
+
+      logger.info('Monthly summary chart generated', { year, imagePath });
+
+      return imagePath;
+    } catch (error) {
+      logger.error('Error generating monthly summary chart', { error: error.message });
+      throw error;
+    }
+  }
+}
+
+module.exports = new ChartGeneratorService();

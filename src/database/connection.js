@@ -26,6 +26,13 @@ if (typeof config.getDatabaseConfig === 'function') {
 // 2. Initialize Knex instance
 const db = knex(dbConfig);
 
+// 2.5. Enable foreign keys for SQLite
+if (dbConfig.client === 'sqlite3') {
+  db.raw('PRAGMA foreign_keys = ON').catch((error) => {
+    logger.warn('Failed to enable foreign keys', { error: error.message });
+  });
+}
+
 // 3. Test connection on startup
 db.raw('SELECT 1')
   .then(() => {

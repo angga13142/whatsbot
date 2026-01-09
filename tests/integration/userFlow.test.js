@@ -10,7 +10,7 @@ const auditRepository = require('../../src/database/repositories/auditRepository
 const knex = require('../../src/database/connection');
 const { generateUserData, cleanTestData } = require('../helpers/testHelpers');
 const { setupTestDatabase } = require('../helpers/dbHelpers');
-const bcrypt = require('bcrypt');
+// // const bcrypt = require('bcrypt');
 
 describe('User Flow Integration Tests', () => {
   let superadminId;

@@ -10,15 +10,13 @@
  */
 
 const transactionService = require('./transactionService');
-const userRepository = require('../database/repositories/userRepository');
 const logger = require('../utils/logger');
 const { formatCurrency, formatDate } = require('../utils/formatter');
-const { createTable, createBox, createDivider } = require('../utils/richText');
-const ExcelJS = require('exceljs');
 const dayjs = require('dayjs');
 const path = require('path');
 const fs = require('fs');
 const config = require('../config/app');
+const reportExporter = require('../utils/reportExporter');
 
 class ReportService {
   constructor() {
@@ -166,6 +164,20 @@ class ReportService {
   formatReportText(reportData) {
     let text = '';
 
+    // Helper functions for formatting
+    const createBox = (title, subtitle = '', width = 50) => {
+      const border = '═'.repeat(width);
+      let box = `╔${border}╗\n`;
+      box += `║${title.padEnd(width)}║\n`;
+      if (subtitle) {
+        box += `║${subtitle.padEnd(width)}║\n`;
+      }
+      box += `╚${border}╝`;
+      return box;
+    };
+
+    const createDivider = (char = '─', width = 50) => char.repeat(width);
+
     if (reportData.type === 'daily') {
       text += createBox('📊 LAPORAN HARIAN', reportData.date, 50);
       text += '\n\n';
@@ -193,48 +205,16 @@ class ReportService {
    */
   async exportToExcel(reportData) {
     try {
-      const workbook = new ExcelJS.Workbook();
-      const worksheet = workbook.addWorksheet('Report');
+      const fileName = `report-${reportData.type}-${Date.now()}`;
 
-      // Add title
-      worksheet.mergeCells('A1:E1');
-      worksheet.getCell('A1').value = `LAPORAN ${reportData.type.toUpperCase()}`;
-      worksheet.getCell('A1').font = { size: 14, bold: true };
-      worksheet.getCell('A1').alignment = { horizontal: 'center' };
+      // Map reportData to expected format for exporter
+      const exportData = {
+        summary: reportData.summary,
+        data: reportData.transactions,
+      };
 
-      // Add headers
-      worksheet.addRow([]);
-      const headerRow = worksheet.addRow(['No', 'Tanggal', 'Jenis', 'Deskripsi', 'Jumlah']);
-      headerRow.font = { bold: true };
-
-      // Add data
-      reportData.transactions.forEach((trx, index) => {
-        worksheet.addRow([
-          index + 1,
-          formatDate(trx.transaction_date, 'DD/MM/YYYY HH:mm'),
-          trx.type,
-          trx.description,
-          parseFloat(trx.amount),
-        ]);
-      });
-
-      // Auto-fit columns
-      worksheet.columns.forEach((column) => {
-        column.width = 15;
-      });
-
-      // Save file
-      const fileName = `report-${reportData.type}-${Date.now()}.xlsx`;
-      const reportPath = config.business?.reportPath || './storage/reports';
-
-      // Ensure directory exists
-      if (!fs.existsSync(reportPath)) {
-        fs.mkdirSync(reportPath, { recursive: true });
-      }
-
-      const filePath = path.join(reportPath, fileName);
-
-      await workbook.xlsx.writeFile(filePath);
+      const result = await reportExporter.export(exportData, 'excel', { filename: fileName });
+      const filePath = result.filepath;
 
       logger.info('Report exported to Excel', { filePath });
 

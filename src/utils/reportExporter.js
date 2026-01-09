@@ -51,22 +51,30 @@ module.exports = {
    */
   async _exportToExcel(reportResult, filename) {
     const ExcelJS = require('exceljs');
-    const workbook = new ExcelJS.Workbook();
+    const filepath = path.join(EXPORT_DIR, `${filename}.xlsx`);
+
+    const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+      filename: filepath,
+      useStyles: true,
+      useSharedStrings: true,
+    });
+
     workbook.creator = 'WhatsApp Cashflow Bot';
     workbook.created = new Date();
 
     // Summary Sheet
     const summarySheet = workbook.addWorksheet('Summary');
     this._addSummarySheet(summarySheet, reportResult.summary);
+    summarySheet.commit();
 
     // Data Sheet
     if (reportResult.data && Array.isArray(reportResult.data)) {
       const dataSheet = workbook.addWorksheet('Data');
       this._addDataSheet(dataSheet, reportResult.data);
+      dataSheet.commit();
     }
 
-    const filepath = path.join(EXPORT_DIR, `${filename}.xlsx`);
-    await workbook.xlsx.writeFile(filepath);
+    await workbook.commit();
 
     return {
       filename: `${filename}.xlsx`,

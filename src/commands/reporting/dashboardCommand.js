@@ -1,76 +1,80 @@
 /**
  * Dashboard Command
  *
- * Display dashboard summary via WhatsApp
+ * Generate visual dashboards
  */
 
 const dashboardService = require('../../services/dashboardService');
-const visualAnalyticsService = require('../../services/visualAnalyticsService');
-const dateRangeHelper = require('../../utils/dateRangeHelper');
 const logger = require('../../utils/logger');
+const { createBox, bold } = require('../../utils/richText');
+const { MessageMedia } = require('whatsapp-web.js');
 
 module.exports = {
   name: 'dashboard',
-  aliases: ['db', 'dasbor'],
-  description: 'View dashboard summary',
+  aliases: ['dash'],
+  description: 'Generate visual dashboard',
   usage: '/dashboard [period]',
 
   async handler(client, message, user, args) {
     try {
-      const preset = args[0] || 'this_month';
+      const period = args[0] || 'this_month';
+      const quick = args.includes('quick');
 
-      await this.showDashboard(message, user, preset);
+      // Get filters
+      const filters = this._getFiltersForPeriod(period);
+
+      await message.reply('📊 Generating dashboard...');
+
+      let imagePath;
+
+      if (quick) {
+        // Quick metrics only
+        imagePath = await dashboardService.generateQuickMetrics(filters);
+      } else {
+        // Full dashboard
+        imagePath = await dashboardService.generateDashboard(filters);
+      }
+
+      // Send image
+      const media = MessageMedia.fromFilePath(imagePath);
+      await client.sendMessage(message.from, media, {
+        caption: `📊 Dashboard - ${period.replace('_', ' ').toUpperCase()}`,
+      });
+
+      // Cleanup
+      setTimeout(async () => {
+        const fs = require('fs').promises;
+        await fs.unlink(imagePath).catch(() => {});
+      }, 60000);
+
+      logger.info('Dashboard generated', { userId: user.id, period });
     } catch (error) {
-      logger.error('Error in dashboard command', { userId: user.id, error: error.message });
-      await message.reply('❌ Terjadi kesalahan.');
+      logger.error('Error in dashboard command', {
+        userId: user.id,
+        error: error.message,
+      });
+      await message.reply('❌ Failed to generate dashboard.');
     }
   },
 
-  async showDashboard(message, user, preset) {
-    try {
-      // Validate preset
-      const presets = dateRangeHelper.getPresetRanges();
-      if (!presets[preset]) {
-        const validPresets = Object.keys(presets).slice(0, 6);
-        await message.reply(
-          '📊 *DASHBOARD*\n\n' +
-            'Pilih periode:\n' +
-            validPresets.map((p) => `• \`/dashboard ${p}\``).join('\n')
-        );
-        return;
-      }
+  /**
+   * Get filters for period
+   * @private
+   */
+  _getFiltersForPeriod(period) {
+    const dateRangeHelper = require('../../utils/dateRangeHelper');
+    const presets = dateRangeHelper.getPresetRanges();
 
-      await message.reply('⏳ Loading dashboard...');
-
-      // Get dashboard data
-      const data = await dashboardService.getDashboardData(preset);
-
-      // Get financial health
-      const health = await visualAnalyticsService.getFinancialHealth({
-        startDate: data.period.startDate,
-        endDate: data.period.endDate,
-      });
-
-      // Format text dashboard
-      let text = dashboardService.formatDashboardText(data);
-
-      // Add health score
-      text += '\n*💚 FINANCIAL HEALTH*\n';
-      text += `${health.emoji} Score: ${health.score}/100 (${health.status})\n`;
-
-      // Add quick actions
-      text += '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
-      text += '*📊 GRAFIK*\n';
-      text += `\`/chart bar ${preset}\` - Bar chart\n`;
-      text += `\`/chart line ${preset}\` - Trend line\n`;
-      text += `\`/chart pie ${preset}\` - Category pie\n`;
-
-      await message.reply(text);
-
-      logger.info('Dashboard displayed', { userId: user.id, preset });
-    } catch (error) {
-      logger.error('Error showing dashboard', { error: error.message });
-      await message.reply('❌ Gagal memuat dashboard.');
+    if (presets[period]) {
+      return {
+        startDate: presets[period].startDate,
+        endDate: presets[period].endDate,
+      };
     }
+
+    return {
+      startDate: presets.this_month.startDate,
+      endDate: presets.this_month.endDate,
+    };
   },
 };

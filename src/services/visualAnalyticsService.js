@@ -1,246 +1,335 @@
 /**
  * Visual Analytics Service
  *
- * Analytics calculations for comparisons, trends, and insights
+ * Advanced analytics calculations and insights
  */
 
 const reportDataRepository = require('../database/repositories/reportDataRepository');
-const dateRangeHelper = require('../utils/dateRangeHelper');
-const { formatCurrency, formatPercentage } = require('../utils/formatter');
 const logger = require('../utils/logger');
+const dayjs = require('dayjs');
 
-module.exports = {
+class VisualAnalyticsService {
   /**
-   * Compare two periods
+   * Calculate growth rate
+   * @param {Object} currentData - Current period data
+   * @param {Object} previousData - Previous period data
+   * @returns {Object} Growth metrics
    */
-  async comparePeriods(preset1, preset2) {
-    try {
-      const presets = dateRangeHelper.getPresetRanges();
+  calculateGrowth(currentData, previousData) {
+    const incomeGrowth = this._calculateGrowthRate(
+      currentData.total_income,
+      previousData.total_income
+    );
 
-      const range1 = presets[preset1];
-      const range2 = presets[preset2];
+    const expenseGrowth = this._calculateGrowthRate(
+      currentData.total_expense,
+      previousData.total_expense
+    );
 
-      if (!range1 || !range2) {
-        throw new Error('Invalid preset name');
-      }
+    const netGrowth = this._calculateGrowthRate(currentData.net, previousData.net);
 
-      const summary1 = await reportDataRepository.getReportSummary({
-        startDate: range1.startDate,
-        endDate: range1.endDate,
-      });
-
-      const summary2 = await reportDataRepository.getReportSummary({
-        startDate: range2.startDate,
-        endDate: range2.endDate,
-      });
-
-      return {
-        period1: { label: range1.label, ...summary1 },
-        period2: { label: range2.label, ...summary2 },
-        comparison: {
-          income: this._compareMetric(summary1.total_income, summary2.total_income),
-          expense: this._compareMetric(summary1.total_expense, summary2.total_expense),
-          net: this._compareMetric(summary1.net, summary2.net),
-          transactions: this._compareMetric(
-            summary1.total_transactions,
-            summary2.total_transactions
-          ),
-        },
-      };
-    } catch (error) {
-      logger.error('Error comparing periods', { error: error.message });
-      throw error;
-    }
-  },
+    return {
+      income: incomeGrowth,
+      expense: expenseGrowth,
+      net: netGrowth,
+      trend: this._determineTrend(incomeGrowth, expenseGrowth),
+    };
+  }
 
   /**
-   * Get top performers (by category, user, or type)
+   * Get top performers
+   * @param {Object} filters - Data filters
+   * @param {string} dimension - Dimension (category, user)
+   * @param {number} limit - Limit
+   * @returns {Promise<Array>}
    */
-  async getTopPerformers(filters, groupBy = 'category', limit = 5) {
+  async getTopPerformers(filters, dimension = 'category', limit = 5) {
     try {
-      const data = await reportDataRepository.getGroupedData(filters, groupBy);
+      const groupedData = await reportDataRepository.getGroupedData(filters, dimension);
 
-      const sorted = [...data].sort((a, b) => parseFloat(b.total) - parseFloat(a.total));
-
-      return sorted.slice(0, limit).map((item, index) => ({
-        rank: index + 1,
-        name: item.category_name || item.user_name || item.type || 'Unknown',
-        count: parseInt(item.count),
-        total: parseFloat(item.total),
-        formatted: formatCurrency(item.total),
-      }));
+      return groupedData
+        .sort((a, b) => parseFloat(b.total) - parseFloat(a.total))
+        .slice(0, limit)
+        .map((item, index) => ({
+          rank: index + 1,
+          name: item.category_name || item.user_name || item.tag_name || 'Unknown',
+          total: parseFloat(item.total),
+          count: parseInt(item.count),
+          average: parseFloat(item.total) / parseInt(item.count),
+        }));
     } catch (error) {
       logger.error('Error getting top performers', { error: error.message });
       throw error;
     }
-  },
+  }
 
   /**
-   * Analyze trend direction
+   * Get bottom performers
+   * @param {Object} filters - Data filters
+   * @param {string} dimension - Dimension
+   * @param {number} limit - Limit
+   * @returns {Promise<Array>}
    */
-  async analyzeTrend(filters, interval = 'day') {
+  async getBottomPerformers(filters, dimension = 'category', limit = 5) {
     try {
-      const trendData = await reportDataRepository.getTrendData(filters, interval);
+      const groupedData = await reportDataRepository.getGroupedData(filters, dimension);
 
-      if (trendData.length < 2) {
-        return { trend: 'insufficient_data', message: 'Data tidak cukup untuk analisis' };
-      }
-
-      const netValues = trendData.map(
-        (d) => parseFloat(d.income || 0) - parseFloat(d.expense || 0)
-      );
-
-      // Calculate trend using linear regression
-      const n = netValues.length;
-      const sumX = (n * (n - 1)) / 2;
-      const sumY = netValues.reduce((a, b) => a + b, 0);
-      const sumXY = netValues.reduce((sum, y, x) => sum + x * y, 0);
-      const sumXX = Array.from({ length: n }, (_, i) => i * i).reduce((a, b) => a + b, 0);
-
-      const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
-
-      // Calculate average and volatility
-      const avg = sumY / n;
-      const variance = netValues.reduce((sum, v) => sum + Math.pow(v - avg, 2), 0) / n;
-      const stdDev = Math.sqrt(variance);
-
-      // Determine trend direction
-      let trend, emoji, description;
-
-      if (slope > avg * 0.1) {
-        trend = 'strongly_up';
-        emoji = '🚀';
-        description = 'Trend sangat positif';
-      } else if (slope > 0) {
-        trend = 'up';
-        emoji = '📈';
-        description = 'Trend positif';
-      } else if (slope < -avg * 0.1) {
-        trend = 'strongly_down';
-        emoji = '📉';
-        description = 'Trend sangat negatif';
-      } else if (slope < 0) {
-        trend = 'down';
-        emoji = '↘️';
-        description = 'Trend negatif';
-      } else {
-        trend = 'stable';
-        emoji = '➡️';
-        description = 'Trend stabil';
-      }
-
-      return {
-        trend,
-        emoji,
-        description,
-        stats: {
-          average: avg,
-          averageFormatted: formatCurrency(avg),
-          volatility: stdDev,
-          min: Math.min(...netValues),
-          max: Math.max(...netValues),
-          periods: n,
-        },
-      };
+      return groupedData
+        .sort((a, b) => parseFloat(a.total) - parseFloat(b.total))
+        .slice(0, limit)
+        .map((item, index) => ({
+          rank: index + 1,
+          name: item.category_name || item.user_name || 'Unknown',
+          total: parseFloat(item.total),
+          count: parseInt(item.count),
+        }));
     } catch (error) {
-      logger.error('Error analyzing trend', { error: error.message });
+      logger.error('Error getting bottom performers', { error: error.message });
       throw error;
     }
-  },
+  }
 
   /**
-   * Get financial health score
+   * Detect anomalies in data
+   * @param {Array} trendData - Trend data
+   * @returns {Array} Anomalies
    */
-  async getFinancialHealth(filters) {
-    try {
-      const summary = await reportDataRepository.getReportSummary(filters);
-
-      let score = 50;
-      const factors = [];
-
-      // Positive cashflow
-      if (summary.net > 0) {
-        score += 20;
-        factors.push({ name: 'Cashflow Positif', impact: '+20', status: 'good' });
-      } else {
-        score -= 20;
-        factors.push({ name: 'Cashflow Negatif', impact: '-20', status: 'bad' });
-      }
-
-      // Income/Expense ratio
-      if (summary.total_expense > 0) {
-        const ratio = summary.total_income / summary.total_expense;
-        if (ratio > 1.5) {
-          score += 20;
-          factors.push({ name: 'Rasio I/E Sangat Baik', impact: '+20', status: 'good' });
-        } else if (ratio > 1.2) {
-          score += 10;
-          factors.push({ name: 'Rasio I/E Baik', impact: '+10', status: 'good' });
-        } else if (ratio < 1) {
-          score -= 20;
-          factors.push({ name: 'Pengeluaran > Pemasukan', impact: '-20', status: 'bad' });
-        }
-      }
-
-      // Transaction volume
-      if (summary.total_transactions > 50) {
-        score += 10;
-        factors.push({ name: 'Volume Transaksi Tinggi', impact: '+10', status: 'good' });
-      }
-
-      score = Math.max(0, Math.min(100, score));
-
-      let status, emoji;
-      if (score >= 80) {
-        status = 'Excellent';
-        emoji = '💚';
-      } else if (score >= 60) {
-        status = 'Good';
-        emoji = '💛';
-      } else if (score >= 40) {
-        status = 'Fair';
-        emoji = '🧡';
-      } else {
-        status = 'Needs Attention';
-        emoji = '❤️';
-      }
-
-      return {
-        score,
-        status,
-        emoji,
-        factors,
-        summary: {
-          income: formatCurrency(summary.total_income),
-          expense: formatCurrency(summary.total_expense),
-          net: formatCurrency(summary.net),
-        },
-      };
-    } catch (error) {
-      logger.error('Error calculating financial health', { error: error.message });
-      throw error;
+  detectAnomalies(trendData) {
+    if (trendData.length < 7) {
+      return [];
     }
-  },
+
+    const values = trendData.map((d) => {
+      const income = parseFloat(d.income || 0);
+      const expense = parseFloat(d.expense || 0);
+      return income - expense;
+    });
+
+    // Calculate mean and standard deviation
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    const variance = values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length;
+    const stdDev = Math.sqrt(variance);
+
+    // Detect anomalies (values beyond 2 standard deviations)
+    const anomalies = [];
+    const threshold = 2;
+
+    trendData.forEach((item, index) => {
+      const value = values[index];
+      const zScore = Math.abs((value - mean) / stdDev);
+
+      if (zScore > threshold) {
+        anomalies.push({
+          period: item.period,
+          value,
+          zScore: zScore.toFixed(2),
+          type: value > mean ? 'spike' : 'drop',
+        });
+      }
+    });
+
+    return anomalies;
+  }
 
   /**
-   * Compare metric helper
+   * Calculate moving average
+   * @param {Array} trendData - Trend data
+   * @param {number} window - Window size
+   * @returns {Array} Moving averages
    */
-  _compareMetric(value1, value2) {
-    const diff = value2 - value1;
-    const percentage = value1 !== 0 ? (diff / value1) * 100 : 0;
+  calculateMovingAverage(trendData, window = 7) {
+    const values = trendData.map((d) => {
+      const income = parseFloat(d.income || 0);
+      const expense = parseFloat(d.expense || 0);
+      return income - expense;
+    });
+
+    const movingAverages = [];
+
+    for (let i = 0; i < values.length; i++) {
+      if (i < window - 1) {
+        movingAverages.push(null);
+      } else {
+        const windowValues = values.slice(i - window + 1, i + 1);
+        const average = windowValues.reduce((a, b) => a + b, 0) / window;
+        movingAverages.push(average);
+      }
+    }
+
+    return movingAverages;
+  }
+
+  /**
+   * Forecast future values (simple linear regression)
+   * @param {Array} trendData - Historical trend data
+   * @param {number} periods - Number of periods to forecast
+   * @returns {Array} Forecasted values
+   */
+  forecastTrend(trendData, periods = 7) {
+    if (trendData.length < 3) {
+      return [];
+    }
+
+    const values = trendData.map((d) => {
+      const income = parseFloat(d.income || 0);
+      const expense = parseFloat(d.expense || 0);
+      return income - expense;
+    });
+
+    // Simple linear regression
+    const n = values.length;
+    const xValues = Array.from({ length: n }, (_, i) => i);
+
+    const sumX = xValues.reduce((a, b) => a + b, 0);
+    const sumY = values.reduce((a, b) => a + b, 0);
+    const sumXY = xValues.reduce((sum, x, i) => sum + x * values[i], 0);
+    const sumXX = xValues.reduce((sum, x) => sum + x * x, 0);
+
+    const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+    const intercept = (sumY - slope * sumX) / n;
+
+    // Generate forecasts
+    const forecasts = [];
+    for (let i = 0; i < periods; i++) {
+      const x = n + i;
+      const forecast = slope * x + intercept;
+      forecasts.push({
+        period: `Forecast +${i + 1}`,
+        value: Math.round(forecast),
+        confidence: this._calculateConfidence(i, periods),
+      });
+    }
+
+    return forecasts;
+  }
+
+  /**
+   * Calculate KPIs
+   * @param {Object} summary - Summary data
+   * @param {Object} options - Options
+   * @returns {Object} KPIs
+   */
+  calculateKPIs(summary, options = {}) {
+    const profitMargin =
+      summary.total_income > 0 ? ((summary.net / summary.total_income) * 100).toFixed(2) : 0;
+
+    const expenseRatio =
+      summary.total_income > 0
+        ? ((summary.total_expense / summary.total_income) * 100).toFixed(2)
+        : 0;
+
+    const avgTransactionValue = summary.total_transactions > 0 ? summary.avg_amount : 0;
+
+    const cashflowHealth = this._assessCashflowHealth(summary);
 
     return {
-      value1,
-      value2,
-      diff,
-      percentage,
-      trend: diff >= 0 ? 'up' : 'down',
-      formatted: {
-        value1: formatCurrency(value1),
-        value2: formatCurrency(value2),
-        diff: formatCurrency(Math.abs(diff)),
-        percentage: formatPercentage(Math.abs(percentage)),
-      },
+      profitMargin: parseFloat(profitMargin),
+      expenseRatio: parseFloat(expenseRatio),
+      avgTransactionValue,
+      cashflowHealth,
+      totalTransactions: summary.total_transactions,
+      runRate: this._calculateRunRate(summary, options),
     };
-  },
-};
+  }
+
+  /**
+   * Calculate growth rate
+   * @private
+   */
+  _calculateGrowthRate(current, previous) {
+    if (previous === 0) {
+      return current > 0 ? 100 : 0;
+    }
+
+    return ((current - previous) / previous) * 100;
+  }
+
+  /**
+   * Determine trend
+   * @private
+   */
+  _determineTrend(incomeGrowth, expenseGrowth) {
+    if (incomeGrowth > expenseGrowth && incomeGrowth > 0) {
+      return 'improving';
+    } else if (incomeGrowth < expenseGrowth || incomeGrowth < 0) {
+      return 'declining';
+    } else {
+      return 'stable';
+    }
+  }
+
+  /**
+   * Calculate forecast confidence
+   * @private
+   */
+  _calculateConfidence(period, totalPeriods) {
+    // eslint-disable-line no-unused-vars
+    // Confidence decreases as we forecast further out
+    const baseConfidence = 85;
+    const decreaseRate = 10;
+    return Math.max(baseConfidence - period * decreaseRate, 50);
+  }
+
+  /**
+   * Assess cashflow health
+   * @private
+   */
+  _assessCashflowHealth(summary) {
+    let score = 50; // Base score
+
+    // Positive net cashflow
+    if (summary.net > 0) {
+      score += 20;
+    } else {
+      score -= 20;
+    }
+
+    // Income to expense ratio
+    if (summary.total_expense > 0) {
+      const ratio = summary.total_income / summary.total_expense;
+      if (ratio > 1.5) score += 20;
+      else if (ratio > 1.2) score += 10;
+      else if (ratio < 1) score -= 20;
+    }
+
+    // Transaction volume
+    if (summary.total_transactions > 50) score += 10;
+
+    score = Math.max(0, Math.min(100, score));
+
+    let status;
+    if (score >= 80) status = 'excellent';
+    else if (score >= 60) status = 'good';
+    else if (score >= 40) status = 'fair';
+    else status = 'poor';
+
+    return { score, status };
+  }
+
+  /**
+   * Calculate run rate
+   * @private
+   */
+  _calculateRunRate(summary, options) {
+    if (!options.startDate || !options.endDate) {
+      return null;
+    }
+
+    const start = dayjs(options.startDate);
+    const end = dayjs(options.endDate);
+    const days = end.diff(start, 'day') + 1;
+
+    if (days <= 0) return null;
+
+    const dailyAverage = summary.net / days;
+
+    return {
+      daily: dailyAverage,
+      weekly: dailyAverage * 7,
+      monthly: dailyAverage * 30,
+      yearly: dailyAverage * 365,
+    };
+  }
+}
+
+module.exports = new VisualAnalyticsService();

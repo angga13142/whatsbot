@@ -5,13 +5,13 @@
  */
 
 const logger = require('../utils/logger');
+const cacheManager = require('../utils/cache');
 
 class CurrencyService {
   constructor() {
     this.baseCurrency = 'IDR';
     this.supportedCurrencies = ['IDR', 'USD', 'EUR', 'SGD', 'MYR', 'JPY', 'CNY'];
-    this.rateCache = new Map();
-    this.cacheDuration = 3600000; // 1 hour in milliseconds
+    this.cacheDuration = 3600; // 1 hour in seconds for node-cache
   }
 
   /**
@@ -28,12 +28,13 @@ class CurrencyService {
       }
 
       // Check cache first
-      const cacheKey = `${from}_${to}`;
-      const cached = this.rateCache.get(cacheKey);
+      // Check cache first
+      const cacheKey = `exchange_rate_${from}_${to}`;
+      const cachedRate = cacheManager.get(cacheKey);
 
-      if (cached && Date.now() - cached.timestamp < this.cacheDuration) {
-        logger.debug('Using cached exchange rate', { from, to, rate: cached.rate });
-        return cached.rate;
+      if (cachedRate) {
+        logger.debug('Using cached exchange rate', { from, to, rate: cachedRate });
+        return cachedRate;
       }
 
       // Get from database first
@@ -306,18 +307,15 @@ class CurrencyService {
    * @private
    */
   _cacheRate(from, to, rate) {
-    const cacheKey = `${from}_${to}`;
-    this.rateCache.set(cacheKey, {
-      rate,
-      timestamp: Date.now(),
-    });
+    const cacheKey = `exchange_rate_${from}_${to}`;
+    cacheManager.set(cacheKey, rate, this.cacheDuration);
   }
 
   /**
    * Clear rate cache
    */
   clearCache() {
-    this.rateCache.clear();
+    cacheManager.delPattern('exchange_rate_');
     logger.info('Exchange rate cache cleared');
   }
 

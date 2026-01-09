@@ -13,7 +13,7 @@
  */
 
 const { Client } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
+// const qrcode = require('qrcode-terminal'); // Unused
 const config = require('../config/app');
 const whatsappConfig = require('../config/whatsapp');
 const logger = require('../utils/logger');

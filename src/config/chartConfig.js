@@ -1,94 +1,236 @@
 /**
  * Chart Configuration
  *
- * Default configurations for chart generation
+ * Default configurations for all chart types
  */
 
 module.exports = {
-  // Canvas dimensions
+  // Default chart dimensions
   dimensions: {
-    default: { width: 800, height: 600 },
-    square: { width: 600, height: 600 },
-    wide: { width: 1000, height: 500 },
-    tall: { width: 600, height: 800 },
-    whatsapp: { width: 800, height: 800 },
-    dashboard: { width: 1200, height: 800 },
+    dashboard: {
+      width: 1080,
+      height: 1920, // Portrait for mobile
+    },
+    fullChart: {
+      width: 1200,
+      height: 800,
+    },
+    squareChart: {
+      width: 1000,
+      height: 1000,
+    },
+    wideChart: {
+      width: 1400,
+      height: 600,
+    },
+    miniChart: {
+      width: 400,
+      height: 200,
+    },
+  },
+
+  // Color palettes
+  colors: {
+    primary: {
+      income: '#10B981', // Green
+      expense: '#EF4444', // Red
+      net: '#3B82F6', // Blue
+      neutral: '#6B7280', // Gray
+    },
+    chart: [
+      '#3B82F6', // Blue
+      '#10B981', // Green
+      '#F59E0B', // Amber
+      '#8B5CF6', // Purple
+      '#EC4899', // Pink
+      '#14B8A6', // Teal
+      '#F97316', // Orange
+      '#6366F1', // Indigo
+    ],
+    gradient: {
+      income: ['#10B981', '#059669'],
+      expense: ['#EF4444', '#DC2626'],
+      neutral: ['#6B7280', '#4B5563'],
+    },
+    background: {
+      light: '#FFFFFF',
+      dark: '#1F2937',
+      card: '#F9FAFB',
+    },
   },
 
   // Font settings
   fonts: {
-    family: "'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif",
-    titleSize: 20,
-    labelSize: 14,
-    legendSize: 12,
-    tickSize: 11,
+    family: 'Arial, sans-serif',
+    sizes: {
+      title: 24,
+      subtitle: 18,
+      label: 14,
+      value: 16,
+      legend: 12,
+    },
+    weights: {
+      normal: 'normal',
+      bold: 'bold',
+    },
   },
 
-  // Chart type defaults
-  chartDefaults: {
+  // Default chart options
+  defaults: {
     bar: {
-      borderRadius: 6,
-      borderWidth: 0,
-      categoryPercentage: 0.7,
-      barPercentage: 0.8,
+      indexAxis: 'x',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+        },
+        tooltip: {
+          enabled: true,
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          titleColor: '#fff',
+          bodyColor: '#fff',
+          padding: 12,
+          displayColors: true,
+        },
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          grid: {
+            color: 'rgba(0, 0, 0, 0.1)',
+          },
+          ticks: {
+            callback: function (value) {
+              return 'Rp ' + value.toLocaleString('id-ID');
+            },
+          },
+        },
+        x: {
+          grid: {
+            display: false,
+          },
+        },
+      },
     },
+
     line: {
-      tension: 0.4,
-      borderWidth: 3,
-      pointRadius: 4,
-      pointHoverRadius: 6,
-      fill: true,
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+        },
+        tooltip: {
+          mode: 'index',
+          intersect: false,
+        },
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          grid: {
+            color: 'rgba(0, 0, 0, 0.1)',
+          },
+        },
+        x: {
+          grid: {
+            display: false,
+          },
+        },
+      },
+      elements: {
+        line: {
+          tension: 0.4, // Smooth curves
+          borderWidth: 3,
+        },
+        point: {
+          radius: 4,
+          hoverRadius: 6,
+        },
+      },
     },
+
     pie: {
-      borderWidth: 2,
-      borderColor: '#ffffff',
-      hoverOffset: 10,
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          position: 'right',
+          labels: {
+            padding: 15,
+            font: {
+              size: 14,
+            },
+          },
+        },
+        tooltip: {
+          callbacks: {
+            label: function (context) {
+              const label = context.label || '';
+              const value = context.parsed || 0;
+              const total = context.dataset.data.reduce((a, b) => a + b, 0);
+              const percentage = ((value / total) * 100).toFixed(1);
+              return `${label}:  Rp ${value.toLocaleString('id-ID')} (${percentage}%)`;
+            },
+          },
+        },
+      },
     },
+
     doughnut: {
+      responsive: true,
+      maintainAspectRatio: false,
       cutout: '60%',
-      borderWidth: 2,
-      borderColor: '#ffffff',
+      plugins: {
+        legend: {
+          display: true,
+          position: 'right',
+        },
+      },
     },
   },
 
-  // Animation (disabled for server-side)
-  animation: false,
-
-  // Legend position
-  legend: {
-    position: 'bottom',
-    align: 'center',
-  },
-
-  // Tooltip settings
-  tooltip: {
-    enabled: true,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    titleColor: '#ffffff',
-    bodyColor: '#ffffff',
-    cornerRadius: 6,
-    padding: 12,
-  },
-
-  // Grid settings
-  grid: {
-    display: true,
-    color: 'rgba(0, 0, 0, 0.1)',
-    drawBorder: false,
-  },
-
-  // Export settings
+  // Image export settings
   export: {
     format: 'png',
     quality: 0.95,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#FFFFFF',
+    maxFileSize: 2 * 1024 * 1024, // 2MB for WhatsApp
+    compression: {
+      enabled: true,
+      quality: 85,
+    },
   },
 
-  // WhatsApp optimization
-  whatsapp: {
-    maxFileSize: 2 * 1024 * 1024, // 2MB
-    compression: 0.85,
-    minWidth: 400,
-    maxWidth: 1200,
+  // Dashboard layout
+  dashboard: {
+    padding: 40,
+    spacing: 20,
+    cardHeight: 150,
+    chartHeight: 400,
+    backgroundColor: '#F3F4F6',
+    titleHeight: 80,
+    footerHeight: 60,
+  },
+
+  // Branding
+  branding: {
+    enabled: true,
+    logo: {
+      path: './assets/logo.png', // Optional
+      width: 60,
+      height: 60,
+      position: 'top-right',
+    },
+    watermark: {
+      text: 'Cashflow Bot',
+      enabled: true,
+      position: 'bottom-right',
+      opacity: 0.3,
+    },
   },
 };

@@ -324,7 +324,9 @@ module.exports = {
    * Create scheduled report
    */
   async createSchedule(reportId, scheduleData, userId) {
-    const report = await this.getReport(reportId, userId);
+    const report = // eslint-disable-line no-unused-vars
+      // eslint-disable-line no-unused-vars
+      await this.getReport(reportId, userId);
 
     const nextRunDate = this._calculateNextRunDate(scheduleData.frequency, scheduleData);
 
