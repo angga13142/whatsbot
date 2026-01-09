@@ -73,33 +73,29 @@ class WhatsAppClient {
    * @private
    */
   _setupEventHandlers() {
-    // QR event - this is where we request pairing code if needed
-    this.client.on('qr', async (qr) => {
-      if (config.bot.authMethod === 'pairing' && config.bot.phoneNumber) {
-        if (this.pairingCodeRequested) {
-          logger.debug('Pairing code already requested, ignoring subsequent QR event');
-          return;
-        }
+    let qrShown = false;
 
+    // Loading screen event - wait for WhatsApp Web to fully load
+    this.client.on('loading_screen', async (percent, message) => {
+      if (
+        config.bot.authMethod === 'pairing' &&
+        config.bot.phoneNumber &&
+        !this.pairingCodeRequested &&
+        percent >= 90 // Wait until loading is almost complete
+      ) {
         this.pairingCodeRequested = true;
 
-        // Request pairing code instead of showing QR
         try {
-          // Wait a bit for browser context to be ready
-          await new Promise((resolve) => setTimeout(resolve, 3000));
+          // Wait a bit more to ensure page is fully ready
+          await new Promise((resolve) => setTimeout(resolve, 5000));
 
           // Sanitize phone number (remove non-digits)
           const phoneNumber = config.bot.phoneNumber.replace(/[^0-9]/g, '');
 
-          logger.info('Requesting pairing code', { phoneNumber });
+          logger.info('Requesting pairing code (page loaded)', { phoneNumber, percent });
 
-          // Request pairing code with timeout
-          const pairingCode = await Promise.race([
-            this.client.requestPairingCode(phoneNumber),
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('Pairing code request timeout')), 10000)
-            ),
-          ]);
+          // Request pairing code
+          const pairingCode = await this.client.requestPairingCode(phoneNumber);
 
           eventHandler.onPairingCode(pairingCode);
           logger.info('Pairing code generated successfully', { code: pairingCode });
@@ -108,13 +104,18 @@ class WhatsAppClient {
             error: error.message,
             stack: error.stack,
           });
-          this.pairingCodeRequested = false; // Reset on failure
-          // Fall back to QR if pairing fails
-          logger.warn('Falling back to QR code authentication');
-          eventHandler.onQR(qr);
+          this.pairingCodeRequested = false;
         }
-      } else {
-        // Show QR code
+      }
+    });
+
+    // QR event - fallback if pairing code fails or not enabled
+    this.client.on('qr', (qr) => {
+      if (!qrShown || !this.pairingCodeRequested) {
+        qrShown = true;
+        if (config.bot.authMethod === 'pairing') {
+          logger.warn('QR code shown, pairing code may have failed');
+        }
         eventHandler.onQR(qr);
       }
     });
