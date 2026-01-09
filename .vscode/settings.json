@@ -2,43 +2,117 @@
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "editor.formatOnSave": true,
   "editor.formatOnPaste": true,
+  "editor.formatOnType": false,
   "editor.codeActionsOnSave": {
-    "source.fixAll.eslint": "explicit",
-    "source.organizeImports": "explicit"
+    "source.fixAll.eslint": true,
+    "source.organizeImports": true
   },
-  "editor.trimAutoWhitespace": true,
+  "editor.rulers": [100],
   "editor.tabSize": 2,
   "editor.insertSpaces": true,
+  "editor.detectIndentation": false,
+  "editor.trimAutoWhitespace": true,
+  "editor.bracketPairColorization.enabled": true,
+  "editor.guides.bracketPairs": true,
+  "editor.suggest.snippetsPreventQuickSuggestions": false,
+  "editor.inlineSuggest.enabled": true,
+  "editor.wordWrap": "on",
+  "editor.quickSuggestions": {
+    "strings": true
+  },
+
+  "files.eol": "\n",
+  "files.encoding": "utf8",
   "files.insertFinalNewline": true,
   "files.trimTrailingWhitespace": true,
+  "files.autoSave": "onFocusChange",
   "files.exclude": {
     "**/.git": true,
-    "**/.svn": true,
-    "**/.hg": true,
-    "**/CVS": true,
     "**/.DS_Store": true,
-    "**/Thumbs.db": true,
-    "**/node_modules": false
+    "**/node_modules": true,
+    "**/.wwebjs_auth": true,
+    "**/.wwebjs_cache": true,
+    "**/coverage": true
   },
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/node_modules/**": true,
+    "**/.wwebjs_auth/**": true,
+    "**/.wwebjs_cache/**": true,
+    "**/storage/**": true,
+    "**/coverage/**": true
+  },
+
   "search.exclude": {
     "**/node_modules": true,
-    "**/bower_components": true,
-    "**/*.code-search": true,
-    "**/storage": true,
-    "**/.wwebjs_auth": true,
+    "**/dist": true,
+    "**/build": true,
     "**/coverage": true,
-    "**/.nyc_output": true
+    "**/.wwebjs_auth": true,
+    "**/storage": true,
+    "**/package-lock.json": true
   },
-  "eslint.validate": ["javascript", "javascriptreact"],
-  "jest.autoRun": "off",
-  "jest.jestCommandLine": "npm test --",
+
+  "eslint.validate": ["javascript"],
+  "eslint.alwaysShowStatus": true,
+  "eslint.format.enable": true,
+  "eslint.lintTask.enable": true,
+
+  "prettier.requireConfig": true,
+  "prettier.useEditorConfig": true,
+
+  "javascript.updateImportsOnFileMove.enabled": "always",
+  "javascript.suggest.autoImports": true,
+  "javascript.format.enable": false,
+  "javascript.validate.enable": true,
+
+  "npm.enableScriptExplorer": true,
+  "npm.scriptExplorerAction": "run",
+
+  "git.confirmSync": false,
+  "git.autofetch": true,
+  "git.enableSmartCommit": true,
+
+  "terminal.integrated.defaultProfile.linux": "bash",
+  "terminal.integrated.defaultProfile.osx": "zsh",
+  "terminal.integrated.defaultProfile.windows": "PowerShell",
+
+  "explorer.confirmDelete": false,
+  "explorer.confirmDragAndDrop": false,
+
+  "workbench.colorTheme": "Default Dark+",
+  "workbench.iconTheme": "material-icon-theme",
+  "workbench.editor.enablePreview": false,
+
   "[javascript]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
   },
   "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "[jsonc]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
   "[markdown]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true,
+    "editor.wordWrap": "on"
+  },
+  "[yaml]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+
+  "jest.autoRun": "off",
+  "jest.showCoverageOnLoad": false,
+
+  "debug.console.fontSize": 14,
+  "debug.console.lineHeight": 20,
+
+  "emmet.includeLanguages": {
+    "javascript": "javascriptreact"
   }
 }

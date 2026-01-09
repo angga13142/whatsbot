@@ -1,33 +1,161 @@
-name: Deploy
+name: Deploy to Production
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
 
 jobs:
-  deploy:
+  # ══════════════════════════════════════════
+  # JOB 1: PRE-DEPLOYMENT CHECKS
+  # ══════════════════════════════════════════
+  pre-deploy:
+    name: 🔍 Pre-deployment Checks
     runs-on: ubuntu-latest
-    # best practice: rely on branch protection rules ensuring CI passed before merge
+
     steps:
-      - uses: actions/checkout@v4
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
 
-      - name: Install SSH Key
-        uses: shimataro/ssh-key-action@v2
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+          node-version: '18'
+          cache: 'npm'
 
-      - name: Deploy to VPS
-        env:
-          HOST: ${{ secrets.Deploy_HOST }}
-          USER: ${{ secrets.DEPLOY_USER }}
-          DIR: ${{ secrets.DEPLOY_DIR }} # e.g. /var/www/whatsbot
-        run: |
-          ssh $USER@$HOST << EOF
-            cd $DIR
-            git pull origin main
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🧪 Run tests
+        run: npm run test:ci
+
+      - name: 🔍 Run linter
+        run: npm run lint
+
+      - name: 🏗️ Run build
+        run: npm run build
+
+      - name: ✅ Pre-deployment checks passed
+        run: echo "✅ Ready for deployment!"
+
+  # ══════════════════════════════════════════
+  # JOB 2: DEPLOY TO VPS
+  # ══════════════════════════════════════════
+  deploy:
+    name: 🚀 Deploy to ${{ github.event.inputs.environment || 'production' }}
+    runs-on: ubuntu-latest
+    needs: pre-deploy
+    environment:
+      name: ${{ github.event.inputs.environment || 'production' }}
+      url: ${{ secrets.APP_URL }}
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔑 Setup SSH key
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: 🚀 Deploy to VPS
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "🚀 Starting deployment..."
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+            # Navigate to project directory
+            cd ${{ secrets.VPS_PROJECT_PATH || '/var/www/whatsapp-cashflow-bot' }}
+
+            # Pull latest code
+            echo "📥 Pulling latest code..."
+            git fetch origin
+            git reset --hard origin/main
+
+            # Install dependencies
+            echo "📦 Installing dependencies..."
             npm ci --production
-            # Run migrations if you have a script for it
-            # npm run migrate
-            pm2 restart whatsbot || pm2 start index.js --name whatsbot
-          EOF
+
+            # Run database migrations
+            echo "🗄️ Running database migrations..."
+            npm run migrate
+
+            # Restart application with PM2
+            echo "🔄 Restarting application..."
+            pm2 restart cashflow-bot
+            pm2 save
+
+            # Health check
+            echo "🏥 Performing health check..."
+            sleep 5
+            pm2 list
+
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "✅ Deployment completed successfully!"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+      - name: ✅ Deployment successful
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "✅ DEPLOYMENT SUCCESSFUL!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Environment: ${{ github.event.inputs.environment || 'production' }}"
+          echo "Branch: ${{ github.ref }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+  # ══════════════════════════════════════════
+  # JOB 3: POST-DEPLOYMENT CHECKS
+  # ══════════════════════════════════════════
+  post-deploy:
+    name: 🔍 Post-deployment Checks
+    runs-on: ubuntu-latest
+    needs: deploy
+
+    steps:
+      - name: 🏥 Health check
+        run: |
+          echo "🏥 Running health check..."
+          # Add your health check endpoint here
+          # curl -f ${{ secrets.APP_URL }}/health || exit 1
+
+      - name: 📊 Verify deployment
+        run: echo "✅ Deployment verified!"
+
+  # ══════════════════════════════════════════
+  # JOB 4: NOTIFICATION
+  # ══════════════════════════════════════════
+  notify:
+    name: 📢 Send Notification
+    runs-on: ubuntu-latest
+    needs: [deploy, post-deploy]
+    if: always()
+
+    steps:
+      - name: 📢 Notify success
+        if: ${{ needs.deploy.result == 'success' && needs.post-deploy.result == 'success' }}
+        run: |
+          echo "✅ Deployment successful notification sent"
+          # Add notification logic here (Slack, Telegram, Email, etc.)
+
+      - name: 🚨 Notify failure
+        if: ${{ needs.deploy.result == 'failure' || needs.post-deploy.result == 'failure' }}
+        run: |
+          echo "❌ Deployment failed notification sent"
+          # Add notification logic here

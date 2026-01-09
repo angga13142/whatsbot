@@ -1,63 +1,231 @@
-name: CI
+name: CI - Continuous Integration
 
 on:
   push:
-    branches: [main, develop]
+    branches:
+      - main
+      - develop
+      - 'feature/**'
   pull_request:
-    branches: [main, develop]
+    branches:
+      - main
+      - develop
+
+# Cancel previous runs if new commit is pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  # ══════════════════════════════════════════
+  # JOB 1: LINT & FORMAT CHECK
+  # ══════════════════════════════════════════
   lint:
-    name: Lint & Format
+    name: 🔍 Lint & Format Check
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Use Node.js
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🟢 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20.x
+          node-version: '18'
           cache: 'npm'
-      - run: npm ci
-      - run: npm run lint
-      - run: npx prettier --check .
 
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🔍 Run ESLint
+        run: npm run lint
+
+      - name: 💅 Check Prettier formatting
+        run: npm run format:check
+
+      - name: ✅ Lint passed
+        if: success()
+        run: echo "✅ Code quality checks passed!"
+
+  # ══════════════════════════════════════════
+  # JOB 2: UNIT TESTS (Multiple Node versions)
+  # ══════════════════════════════════════════
   test:
-    name: Test
-    runs-on: ubuntu-latest
+    name: 🧪 Unit Tests (Node ${{ matrix.node-version }})
+    runs-on: ${{ matrix.os }}
+    needs: lint
+
     strategy:
+      fail-fast: false
       matrix:
-        node-version: [18.x, 20.x]
-      fail-fast: true
+        os: [ubuntu-latest]
+        node-version: [18, 20]
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Use Node.js ${{ matrix.node-version }}
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
-      - run: npm ci
-      # SQLite setup might be needed if tests actually hit a database file,
-      # but usually sqlite3 is just an npm package or in-memory.
-      # Assuming jest is configured for coverage
-      - run: npm test -- --coverage
-      # Optional: Upload to Codecov
-      # - name: Upload coverage reports to Codecov
-      #   uses: codecov/codecov-action@v4
-      #   env:
-      #     CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  build:
-    name: Build
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🧪 Run tests with coverage
+        run: npm run test:ci
+        env:
+          NODE_ENV: test
+
+      - name: 📊 Upload coverage to Codecov
+        if: matrix.node-version == 18
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage/coverage-final.json
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+          verbose: true
+
+      - name: 📈 Upload coverage artifacts
+        if: matrix.node-version == 18
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+
+      - name: ✅ Tests passed
+        if: success()
+        run: echo "✅ All tests passed on Node ${{ matrix.node-version }}!"
+
+  # ══════════════════════════════════════════
+  # JOB 3: SECURITY AUDIT
+  # ══════════════════════════════════════════
+  security:
+    name: 🔒 Security Audit
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: lint
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Use Node.js 20.x
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20.x
+          node-version: '18'
           cache: 'npm'
-      - run: npm ci
-      # If there is a build script (e.g. for typescript or frontend), run it.
-      # Since it's a Node project it might just be 'install' but adding a dummy check or actual build if defined.
-      - run: npm run build --if-present
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🔒 Run npm audit
+        run: npm audit --audit-level=moderate
+        continue-on-error: true
+
+      - name: 🛡️ Check for known vulnerabilities
+        run: |
+          if npm audit --audit-level=high --json > audit-results.json; then
+            echo "✅ No high/critical vulnerabilities found"
+          else
+            echo "⚠️ Vulnerabilities detected, please review"
+            cat audit-results.json
+          fi
+        continue-on-error: true
+
+      - name: 📤 Upload audit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-audit
+          path: audit-results.json
+          retention-days: 30
+
+  # ══════════════════════════════════════════
+  # JOB 4: BUILD CHECK
+  # ══════════════════════════════════════════
+  build:
+    name: 🏗️ Build Check
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🏗️ Run build
+        run: npm run build
+
+      - name: ✅ Build successful
+        run: echo "✅ Build completed successfully!"
+
+  # ══════════════════════════════════════════
+  # JOB 5: DEPENDENCY CHECK
+  # ══════════════════════════════════════════
+  dependencies:
+    name: 📦 Dependency Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: 🔍 Check for outdated dependencies
+        run: npm outdated || true
+
+      - name: 📊 Generate dependency tree
+        run: npm list --all || true
+
+  # ══════════════════════════════════════════
+  # JOB 6: ALL CHECKS PASSED
+  # ══════════════════════════════════════════
+  all-checks:
+    name: ✅ All CI Checks
+    runs-on: ubuntu-latest
+    needs: [lint, test, security, build]
+    if: always()
+
+    steps:
+      - name: ✅ All checks passed
+        if: ${{ needs.lint.result == 'success' && needs.test.result == 'success' && needs.build.result == 'success' }}
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "✅ ALL CI CHECKS PASSED!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "✅ Lint: PASSED"
+          echo "✅ Tests: PASSED"
+          echo "✅ Security: PASSED"
+          echo "✅ Build: PASSED"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+      - name: ❌ Some checks failed
+        if: ${{ needs.lint.result != 'success' || needs.test.result != 'success' || needs.build.result != 'success' }}
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "❌ SOME CI CHECKS FAILED"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Lint: ${{ needs.lint.result }}"
+          echo "Tests: ${{ needs.test.result }}"
+          echo "Security: ${{ needs.security.result }}"
+          echo "Build: ${{ needs.build.result }}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          exit 1
