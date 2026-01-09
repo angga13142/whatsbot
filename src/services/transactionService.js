@@ -77,7 +77,7 @@ class TransactionService {
             amount,
             description,
             customer_name: metadata.customer_name || null,
-            image_url: metadata.image_url || null,
+            legacy_image_url: metadata.image_url || null,
             status,
             approved_by: shouldAutoApprove ? userId : null,
             approved_at: shouldAutoApprove ? new Date() : null,
