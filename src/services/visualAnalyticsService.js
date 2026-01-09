@@ -262,6 +262,8 @@ class VisualAnalyticsService {
    * Calculate forecast confidence
    * @private
    */
+  // eslint-disable-next-line no-unused-vars
+  // eslint-disable-next-line no-unused-vars
   _calculateConfidence(period, totalPeriods) {
     // eslint-disable-line no-unused-vars
     // Confidence decreases as we forecast further out

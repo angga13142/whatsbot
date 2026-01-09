@@ -101,6 +101,8 @@ class ImageGenerator {
 
       // Draw charts
       if (dashboardData.charts && dashboardData.charts.length > 0) {
+        // eslint-disable-next-line no-unused-vars
+        // eslint-disable-next-line no-unused-vars
         yOffset = await this._drawCharts(ctx, dashboardData.charts, width, yOffset);
       }
 

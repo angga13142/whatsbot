@@ -545,6 +545,7 @@ module.exports = {
    * @private
    */
   async _executeComparisonReport(filters, config) {
+    // eslint-disable-line no-unused-vars
     // Determine periods
     const currentEnd = dayjs(filters.endDate || new Date());
     const currentStart = dayjs(filters.startDate || currentEnd.subtract(30, 'day'));

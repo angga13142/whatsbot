@@ -11,16 +11,17 @@ const userRepository = require('../../src/database/repositories/userRepository')
 const transactionRepository = require('../../src/database/repositories/transactionRepository');
 const auditRepository = require('../../src/database/repositories/auditRepository');
 const knex = require('../../src/database/connection');
-const { cleanTestData, wait } = require('../helpers/testHelpers');
+const { cleanTestData } = require('../helpers/testHelpers');
 const { setupTestDatabase } = require('../helpers/dbHelpers');
 const dayjs = require('dayjs');
 
 describe('Complete Workflow E2E Tests', () => {
   let superadminId;
   let adminId;
-  let karyawan1Id;
-  let karyawan2Id;
-  let investorId;
+  let karyawan1Id, karyawan2Id;
+  // eslint-disable-next-line no-unused-vars
+  // eslint-disable-next-line no-unused-vars
+  let investorId; // Used in investor test
 
   beforeAll(async () => {
     await setupTestDatabase(knex);

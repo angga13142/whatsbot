@@ -21,8 +21,8 @@ class AnomalyDetectionService {
    * @param {Object} options - Detection options
    * @returns {Promise<Array>} Detected anomalies
    */
+  // eslint-disable-next-line no-unused-vars
   async detectAnomalies(filters = {}, options = { threshold: 2.5 }) {
-    // eslint-disable-line no-unused-vars
     try {
       // Get transaction data
       const transactions = await reportDataRepository.executeReport(filters, {
@@ -267,6 +267,8 @@ class AnomalyDetectionService {
    * Generate anomaly message
    * @private
    */
+  // eslint-disable-next-line no-unused-vars
+  // eslint-disable-next-line no-unused-vars
   _generateAnomalyMessage(transaction, mean, zScore) {
     const amount = parseFloat(transaction.amount);
     const deviation = (((amount - mean) / mean) * 100).toFixed(1);
@@ -279,6 +281,7 @@ class AnomalyDetectionService {
    * Generate recommendation
    * @private
    */
+  // eslint-disable-next-line no-unused-vars
   _generateRecommendation(zScore, transaction) {
     const absZ = Math.abs(zScore);
 

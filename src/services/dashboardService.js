@@ -194,6 +194,8 @@ class DashboardService {
    * Build dashboard charts
    * @private
    */
+  // eslint-disable-next-line no-unused-vars
+  // eslint-disable-next-line no-unused-vars
   async _buildDashboardCharts(trendData, categoryData, filters) {
     const charts = [];
 

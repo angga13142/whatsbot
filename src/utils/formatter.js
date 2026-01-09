@@ -135,6 +135,8 @@ module.exports = {
    *   pluralize(5, 'transaksi') // "5 transaksi"
    *   pluralize(1, 'item', 'item-item') // "1 item"
    */
+  // eslint-disable-next-line no-unused-vars
+  // eslint-disable-next-line no-unused-vars
   pluralize(count, singular, _plural = singular) {
     // eslint-disable-line no-unused-vars
     // Indonesian simple pluralization: just show count + word

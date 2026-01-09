@@ -168,7 +168,10 @@ class BusinessIntelligenceService {
    * Calculate efficiency metrics
    * @private
    */
+  // eslint-disable-next-line no-unused-vars
+  // eslint-disable-next-line no-unused-vars
   _calculateEfficiencyMetrics(summary, transactions) {
+    // eslint-disable-line no-unused-vars
     const avgTransactionValue =
       summary.total_transactions > 0 ? summary.total_income / summary.total_transactions : 0;
 
@@ -299,6 +302,7 @@ class BusinessIntelligenceService {
    * Assess business risks
    * @private
    */
+  // eslint-disable-next-line no-unused-vars
   _assessRisks(summary, transactions) {
     const risks = [];
 

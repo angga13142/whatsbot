@@ -6,7 +6,7 @@
 
 const chartConfig = require('../config/chartConfig');
 const { getColorByType, getChartColors, addTransparency } = require('./colorPalette');
-const { formatCurrency } = require('./formatter');
+// formatCurrency available if needed in future
 
 class ChartBuilder {
   constructor() {
