@@ -88,17 +88,7 @@ async function initializeWhatsApp() {
     logger.info('Initializing WhatsApp client...');
     console.log(chalk.cyan('📱 Initializing WhatsApp client...'));
 
-    // Check if pairing code is needed
-    if (config.bot.authMethod === 'pairing' && config.bot.phoneNumber) {
-      // Will request pairing code after initialization
-    }
-
     await whatsappClient.initialize();
-
-    // Request pairing code if needed
-    if (config.bot.authMethod === 'pairing' && config.bot.phoneNumber) {
-      await whatsappClient.requestPairingCode(config.bot.phoneNumber);
-    }
 
     logger.info('WhatsApp client initialized');
 

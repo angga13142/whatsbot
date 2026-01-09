@@ -26,6 +26,7 @@ class WhatsAppClient {
     this.isInitializing = false;
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
+    this.pairingCodeRequested = false;
   }
 
   /**
@@ -41,6 +42,7 @@ class WhatsAppClient {
       }
 
       this.isInitializing = true;
+      this.pairingCodeRequested = false;
 
       // Log startup
       logger.info('Initializing WhatsApp client... ', {
@@ -56,6 +58,9 @@ class WhatsAppClient {
 
       // Initialize
       await this.client.initialize();
+
+      // IMPORTANT: requestPairingCode must be called AFTER client emits 'qr' event but BEFORE scanning
+      // For pairing code mode, we'll handle this in the qr event handler
     } catch (error) {
       logger.error('Failed to initialize WhatsApp client', { error: error.message });
       this.isInitializing = false;
@@ -68,8 +73,53 @@ class WhatsAppClient {
    * @private
    */
   _setupEventHandlers() {
-    this.client.on('qr', (qr) => eventHandler.onQR(qr));
-    this.client.on('pairing_code', (code) => eventHandler.onPairingCode(code));
+    // QR event - this is where we request pairing code if needed
+    this.client.on('qr', async (qr) => {
+      if (config.bot.authMethod === 'pairing' && config.bot.phoneNumber) {
+        if (this.pairingCodeRequested) {
+          logger.debug('Pairing code already requested, ignoring subsequent QR event');
+          return;
+        }
+
+        this.pairingCodeRequested = true;
+
+        // Request pairing code instead of showing QR
+        try {
+          // Wait a bit for browser context to be ready
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+
+          // Sanitize phone number (remove non-digits)
+          const phoneNumber = config.bot.phoneNumber.replace(/[^0-9]/g, '');
+
+          logger.info('Requesting pairing code', { phoneNumber });
+
+          // Request pairing code with timeout
+          const pairingCode = await Promise.race([
+            this.client.requestPairingCode(phoneNumber),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Pairing code request timeout')), 10000)
+            ),
+          ]);
+
+          eventHandler.onPairingCode(pairingCode);
+          logger.info('Pairing code generated successfully', { code: pairingCode });
+        } catch (error) {
+          logger.error('Failed to request pairing code', {
+            error: error.message,
+            stack: error.stack,
+          });
+          this.pairingCodeRequested = false; // Reset on failure
+          // Fall back to QR if pairing fails
+          logger.warn('Falling back to QR code authentication');
+          eventHandler.onQR(qr);
+        }
+      } else {
+        // Show QR code
+        eventHandler.onQR(qr);
+      }
+    });
+
+    // Note: 'code' event removed - we get pairing code from requestPairingCode() return value
     this.client.on('authenticated', () => eventHandler.onAuthenticated());
     this.client.on('auth_failure', (msg) => eventHandler.onAuthFailure(msg));
     this.client.on('ready', () => {
