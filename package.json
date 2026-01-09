@@ -1,11 +1,11 @@
 {
   "name": "whatsbot",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Professional WhatsApp bot with code quality tools and CI/CD",
+  "main": "app.js",
   "scripts": {
-    "dev": "nodemon -r dotenv/config index.js",
-    "start": "node index.js",
+    "start": "node app.js",
+    "dev": "nodemon app.js",
     "debug": "nodemon --inspect index.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -30,11 +30,30 @@
     "pm2:stop": "pm2 stop whatsbot",
     "clean": "rm -rf coverage dist node_modules/.cache",
     "backup": "echo \"Error: Backup script not configured\"",
-    "logs": "pm2 logs whatsbot"
+    "logs": "pm2 logs whatsbot",
+    "commitlint": "commitlint --edit"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "whatsapp",
+    "bot",
+    "whatsapp-bot",
+    "automation",
+    "nodejs",
+    "jest",
+    "eslint",
+    "prettier",
+    "ci-cd"
+  ],
+  "author": "Angga <angga13142@github>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/angga13142/whatsbot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/angga13142/whatsbot/issues"
+  },
+  "homepage": "https://github.com/angga13142/whatsbot#readme",
   "type": "commonjs",
   "devDependencies": {
     "@commitlint/cli": "^20.3.1",
