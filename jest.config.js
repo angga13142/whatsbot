@@ -7,8 +7,8 @@ module.exports = {
   collectCoverageFrom: [
     'src/utils/**/*.js',
     'src/services/**/*.js',
-    '!src/services/notificationService.js', // Exclude until tested
-    '!src/services/reportService.js', // Exclude until tested
+    '!src/services/notificationService.js',
+    '!src/services/reportService.js',
   ],
   coverageThreshold: {
     global: {

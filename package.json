@@ -102,6 +102,7 @@
     "@commitlint/cli": "^18.4.3",
     "@commitlint/config-conventional": "^18.4.3",
     "@faker-js/faker": "10.2.0",
+    "@types/jest": "30.0.0",
     "@types/node": "^20.10.6",
     "eslint": "^8.55.0",
     "eslint-config-airbnb-base": "^15.0.0",

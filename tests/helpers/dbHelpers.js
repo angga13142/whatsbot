@@ -57,7 +57,6 @@ async function seedTestData(knex, data) {
  * @param {Object} knex - Knex instance
  */
 async function clearAllTables(knex) {
-  // Order matters due to foreign keys
   await knex('audit_logs').delete();
   await knex('bot_sessions').delete();
   await knex('transactions').delete();
